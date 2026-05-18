@@ -419,6 +419,153 @@ styleSheet.textContent = `
     gap: 8px;
     padding: 4px;
   }
+
+  /* ========== MOBILE RESPONSIVE STYLES ========== */
+  @media (max-width: 768px) {
+    .chat-layout {
+      flex-direction: column;
+      height: 100dvh;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: -280px;
+      width: 280px;
+      height: 100dvh;
+      z-index: 1000;
+      background: var(--surface);
+      transition: left 0.2s ease;
+      box-shadow: 2px 0 20px rgba(0,0,0,0.3);
+    }
+
+    .sidebar.open {
+      left: 0;
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      z-index: 999;
+      display: none;
+    }
+
+    .sidebar-overlay.open {
+      display: block;
+    }
+
+    .chat-main {
+      width: 100%;
+      height: 100%;
+    }
+
+    .mobile-menu-btn {
+      display: flex;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 40px;
+      height: 40px;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      cursor: pointer;
+    }
+
+    .copy-link-btn span {
+      display: none;
+    }
+    .copy-link-btn {
+      width: 40px;
+      padding: 0;
+      justify-content: center;
+    }
+
+    .msg-content {
+      max-width: 85%;
+    }
+
+    .msg-bubble {
+      font-size: 15px;
+      padding: 10px 14px;
+    }
+
+    .reaction-chip {
+      padding: 6px 12px;
+      font-size: 14px;
+    }
+
+    .reaction-opt {
+      font-size: 24px;
+      padding: 6px;
+    }
+
+    .input-row {
+      gap: 8px;
+    }
+
+    .msg-input {
+      font-size: 16px;
+      padding: 12px;
+    }
+
+    .icon-btn {
+      width: 48px;
+      height: 48px;
+      font-size: 22px;
+    }
+
+    .emoji-picker {
+      bottom: 80px;
+      right: 16px;
+      width: 260px;
+    }
+
+    .context-menu {
+      min-width: 160px;
+      padding: 12px;
+    }
+
+    .context-menu-item {
+      padding: 10px 16px;
+      font-size: 15px;
+    }
+
+    .reaction-row {
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .typing-bar {
+      font-size: 12px;
+      padding: 0 16px;
+    }
+
+    .history-loading {
+      font-size: 14px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .join-card {
+      width: 92%;
+      padding: 32px 24px;
+    }
+
+    .chat-header {
+      padding: 12px 16px;
+    }
+
+    .room-name {
+      font-size: 16px;
+    }
+
+    .messages-area {
+      padding: 16px;
+    }
+  }
 `;
 document.head.appendChild(styleSheet);
 
@@ -592,6 +739,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [messageBuffer, setMessageBuffer] = useState([]);
   // Context menu state
   const [contextMenu,   setContextMenu]   = useState({ visible: false, x: 0, y: 0, msgId: null, sender: null });
+  // Mobile sidebar state
+  const [sidebarOpen,   setSidebarOpen]   = useState(false);
 
   const endRef      = useRef();
   const fileRef     = useRef();
@@ -829,12 +978,17 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
   return (
     <div className="chat-layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">
+      {/* Mobile overlay */}
+      <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
+
+      {/* Sidebar with dynamic class */}
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+        <div className="sidebar-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="sidebar-logo"><div className="logo-dot" />NexChat</div>
-          <div className="room-badge"><span>🔒</span> #{displayRoom}</div>
-          <div className="private-badge">✦ Private chat</div>
+          <div className="mobile-menu-close" onClick={() => setSidebarOpen(false)} style={{ fontSize: 24, cursor: "pointer" }}>✕</div>
         </div>
+        <div className="room-badge" style={{ marginLeft: 20, marginRight: 20 }}><span>🔒</span> #{displayRoom}</div>
+        <div className="private-badge" style={{ marginLeft: 20, marginRight: 20 }}>✦ Private chat</div>
         <div className="users-section">
           <div className="section-label">Members — {users.length}</div>
           {users.map((u, i) => (
@@ -858,10 +1012,16 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
       <main className="chat-main">
         <div className="chat-header">
-          <div><div className="room-name">🔒 Private Chat</div><div className="room-subtitle">#{displayRoom} · Only invited members can see this</div></div>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>☰</div>
+            <div>
+              <div className="room-name">🔒 Private Chat</div>
+              <div className="room-subtitle">#{displayRoom} · Only invited members can see this</div>
+            </div>
+          </div>
           <div className="header-meta">
             <div className="member-count"><div className="status-dot" />{users.length} {users.length === 1 ? "member" : "members"}</div>
-            <button className={`copy-link-btn${linkCopied ? " copied" : ""}`} onClick={copyInviteLink}>{linkCopied ? "✓ Copied!" : "🔗 Invite"}</button>
+            <button className={`copy-link-btn${linkCopied ? " copied" : ""}`} onClick={copyInviteLink}>{linkCopied ? "✓" : "🔗"}<span>Invite</span></button>
           </div>
         </div>
 
@@ -883,10 +1043,10 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                       <div style={{ position:"relative" }}>
                         <div
                           className={`msg-bubble ${isOwn ? "own" : "other"}`}
-                          onContextMenu={(e) => handleContextMenu(e, msg.id, msg.sender)}
+                          onContextMenu={(e) => { e.preventDefault(); handleContextMenu(e, msg.id, msg.sender); }}
                           onDoubleClick={() => setActivePicker(p => p === msg.id ? null : msg.id)}
                           style={{ cursor:"pointer" }}
-                          title="Right‑click for actions | Double‑click to react"
+                          title="Long press / right‑click for actions | Double‑tap to react"
                         >
                           {msg.type === "image" ? (
                             <img
