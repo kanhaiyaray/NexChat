@@ -420,27 +420,30 @@ styleSheet.textContent = `
     padding: 4px;
   }
 
-  /* ========== MOBILE RESPONSIVE STYLES ========== */
+  /* ========== MOBILE SMOOTH STYLES ========== */
   @media (max-width: 768px) {
     .chat-layout {
       flex-direction: column;
       height: 100dvh;
+      overflow: hidden;
     }
 
     .sidebar {
       position: fixed;
       top: 0;
-      left: -280px;
+      left: 0;
       width: 280px;
       height: 100dvh;
       z-index: 1000;
       background: var(--surface);
-      transition: left 0.2s ease;
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      will-change: transform;
       box-shadow: 2px 0 20px rgba(0,0,0,0.3);
     }
 
     .sidebar.open {
-      left: 0;
+      transform: translateX(0);
     }
 
     .sidebar-overlay {
@@ -450,15 +453,30 @@ styleSheet.textContent = `
       backdrop-filter: blur(4px);
       z-index: 999;
       display: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
     }
 
     .sidebar-overlay.open {
       display: block;
+      opacity: 1;
+    }
+
+    body.no-scroll {
+      overflow: hidden;
+    }
+
+    .messages-area {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
     }
 
     .chat-main {
       width: 100%;
       height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
     .mobile-menu-btn {
@@ -466,19 +484,24 @@ styleSheet.textContent = `
       background: rgba(255,255,255,0.08);
       border: 1px solid var(--border);
       border-radius: 10px;
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       align-items: center;
       justify-content: center;
       margin-right: 12px;
       cursor: pointer;
+      transition: background 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mobile-menu-btn:active {
+      background: rgba(255,255,255,0.15);
     }
 
     .copy-link-btn span {
       display: none;
     }
     .copy-link-btn {
-      width: 40px;
+      width: 44px;
       padding: 0;
       justify-content: center;
     }
@@ -541,10 +564,6 @@ styleSheet.textContent = `
     .typing-bar {
       font-size: 12px;
       padding: 0 16px;
-    }
-
-    .history-loading {
-      font-size: 14px;
     }
   }
 
@@ -718,7 +737,7 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
   );
 };
 
-// ─── ChatScreen Component (with right-click menu & deletion for both types) ──
+// ─── ChatScreen Component ────────────────────────────────────────────────────
 const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [message,       setMessage]       = useState("");
   const [messages,      setMessages]      = useState([]);
@@ -737,9 +756,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [linkCopied,    setLinkCopied]    = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [messageBuffer, setMessageBuffer] = useState([]);
-  // Context menu state
   const [contextMenu,   setContextMenu]   = useState({ visible: false, x: 0, y: 0, msgId: null, sender: null });
-  // Mobile sidebar state
   const [sidebarOpen,   setSidebarOpen]   = useState(false);
 
   const endRef      = useRef();
@@ -767,7 +784,16 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     }
   };
 
-  // Context menu handlers
+  // Lock body scroll when sidebar is open (mobile only)
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.classList.add("no-scroll");
+    } else {
+      document.body.classList.remove("no-scroll");
+    }
+    return () => document.body.classList.remove("no-scroll");
+  }, [sidebarOpen]);
+
   const handleContextMenu = (e, msgId, sender) => {
     e.preventDefault();
     setContextMenu({
@@ -790,7 +816,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     closeContextMenu();
   };
 
-  // Close context menu on outside click
   useEffect(() => {
     const handleClickOutside = () => closeContextMenu();
     if (contextMenu.visible) {
@@ -799,7 +824,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     }
   }, [contextMenu.visible]);
 
-  // Socket setup with buffering
   useEffect(() => {
     socket.emit("join_room", { username, token });
 
@@ -864,8 +888,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       setImgUploading(false);
       showToast(`⚠️ ${errMsg || "Image upload failed"}`, "error");
     };
-
-    // Deletion events
     const onMessageDeleted = ({ msgId }) => {
       setMessages(prev => prev.filter(m => m.id !== msgId));
     };
@@ -978,10 +1000,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
   return (
     <div className="chat-layout">
-      {/* Mobile overlay */}
       <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
 
-      {/* Sidebar with dynamic class */}
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="sidebar-logo"><div className="logo-dot" />NexChat</div>
@@ -1078,137 +1098,4 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                       )}
                       <div className="msg-time">{formatTime(msg.timestamp)}</div>
                     </div>
-                    {isOwn && <div style={{ width:30, flexShrink:0 }} />}
-                  </div>
-                );
-              })}
-            </>
-          )}
-          <div ref={endRef} />
-        </div>
-
-        {/* Context Menu */}
-        {contextMenu.visible && (
-          <div
-            className="context-menu"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-          >
-            <div className="reaction-row">
-              {REACTIONS.map(emoji => (
-                <span
-                  key={emoji}
-                  className="reaction-opt"
-                  onClick={() => {
-                    addReaction(contextMenu.msgId, emoji);
-                    closeContextMenu();
-                  }}
-                >
-                  {emoji}
-                </span>
-              ))}
-            </div>
-            {contextMenu.sender === username && (
-              <>
-                <div className="context-menu-divider" />
-                <div className="context-menu-item" onClick={deleteMessage}>
-                  🗑️ Delete message
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="typing-bar">{typing && <><div className="typing-dots"><span /><span /><span /></div>{typing} is typing…</>}</div>
-
-        <div className="input-bar" style={{ position:"relative" }}>
-          {imgUploading && <div className="uploading-indicator"><span className="spin-icon">⏳</span> Uploading to Cloudinary…</div>}
-          {imagePreview && !imgUploading && (
-            <div className="image-preview">
-              <img className="preview-thumb" src={imagePreview} alt="preview" />
-              <span className="preview-name">{image?.name}</span>
-              <div className="preview-remove" onClick={() => {
-                setImage(null);
-                if (imagePreview) URL.revokeObjectURL(imagePreview);
-                setImgPrev(null);
-                if (fileRef.current) fileRef.current.value = "";
-              }}>✕</div>
-              <button className="icon-btn accent" onClick={sendImage} style={{ width:36, height:36 }}>↑</button>
-            </div>
-          )}
-          <div className="input-row">
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display:"none" }} />
-            <button className="icon-btn" onClick={() => fileRef.current.click()} disabled={imgUploading} title="Attach image">📎</button>
-            <textarea ref={inputRef} className="msg-input" rows={1} value={message} placeholder="Message your private group…" onChange={e => { setMessage(e.target.value); handleTyping(); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} style={{ height:"42px", lineHeight:"18px", paddingTop:"12px" }} />
-            <button className="icon-btn" onClick={() => setShowEmoji(p => !p)} title="Emoji">😊</button>
-            <button className="icon-btn accent" onClick={sendMessage} title="Send (Enter)">➤</button>
-          </div>
-          {showEmoji && <div className="emoji-picker">{EMOJI_PANEL.map(e => <span key={e} className="emoji-btn" onClick={() => insertEmoji(e)}>{e}</span>)}</div>}
-        </div>
-      </main>
-
-      {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}><img src={lightbox} alt="full" /></div>}
-      {toast && <div className={`toast ${toastType === "error" ? "error" : ""}`}>{toast}</div>}
-    </div>
-  );
-};
-
-// ─── Root Chat ────────────────────────────────────────────────────────────────
-const Chat = () => {
-  const { isSignedIn, isLoaded, user } = useUser();
-  const [token,  setToken]  = useState(null);
-  const [roomId, setRoomId] = useState(null);
-  const [joined, setJoined] = useState(false);
-
-  useEffect(() => {
-    const params    = new URLSearchParams(window.location.search);
-    const urlToken  = params.get("token");
-    if (urlToken) {
-      setToken(urlToken);
-      try { sessionStorage.setItem("nexchat_token", urlToken); } catch {}
-    } else {
-      try {
-        const saved = sessionStorage.getItem("nexchat_token");
-        if (saved) setToken(saved);
-      } catch {}
-    }
-  }, []);
-
-  const displayName =
-    user?.fullName ||
-    user?.username ||
-    user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
-    "User";
-
-  if (!isLoaded) return <div className="clerk-wrapper"><div style={{ color:"var(--muted)", display:"flex", alignItems:"center", gap:8 }}><span className="spin-icon">⏳</span> Loading…</div></div>;
-  if (!isSignedIn) return <div className="clerk-wrapper"><SignIn /></div>;
-  if (!joined) {
-    return (
-      <PrivateJoinScreen
-        clerkUser={user}
-        initialToken={token}
-        onJoin={(tok, rId) => {
-          setToken(tok);
-          setRoomId(rId);
-          setJoined(true);
-          try { sessionStorage.setItem("nexchat_token", tok); } catch {}
-          window.history.replaceState({}, "", window.location.pathname);
-        }}
-      />
-    );
-  }
-
-  return (
-    <ChatScreen
-      username={displayName}
-      roomId={roomId}
-      token={token}
-      clerkUser={user}
-      onLeave={() => {
-        setJoined(false); setToken(null); setRoomId(null);
-        try { sessionStorage.removeItem("nexchat_token"); } catch {}
-      }}
-    />
-  );
-};
-
-export default Chat;
+                    {isOwn && <div style={{ width:30, flexS
