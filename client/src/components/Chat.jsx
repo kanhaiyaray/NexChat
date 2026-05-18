@@ -606,7 +606,7 @@ const initials = (name = "") => name.slice(0, 2).toUpperCase();
 const EMOJI_PANEL = ["😂","🔥","❤️","👍","😮","😢","🎉","💀","🤯","👀","✅","💯"];
 const REACTIONS   = ["❤️","🔥","😂","👍","😮","💯"];
 
-// ─── PrivateJoinScreen Component (unchanged) ─────────────────────────────────
+// ─── PrivateJoinScreen Component ─────────────────────────────────────────────
 const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
   const [pastedLink, setPastedLink]   = useState("");
   const [creating,   setCreating]     = useState(false);
@@ -620,29 +620,22 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
     "User";
 
   useEffect(() => {
-    if (initialToken) {
-      validateAndJoin(initialToken);
-    }
+    if (initialToken) validateAndJoin(initialToken);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialToken]);
 
   const validateAndJoin = async (rawInput) => {
     const token = parseToken(rawInput);
     if (!token) { setErrorMsg("Please enter a valid invite link or token."); return; }
-
     setValidating(true);
     setErrorMsg("");
     try {
       const res  = await fetch(`${API_BASE}/api/validate-token/${encodeURIComponent(token)}`);
       const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || "Invalid or expired invite link.");
-        return;
-      }
+      if (!res.ok) throw new Error(data.error || "Invalid link");
       onJoin(token, data.roomId);
-    } catch {
-      setErrorMsg("Could not reach server. Check your connection.");
+    } catch (err) {
+      setErrorMsg(err.message || "Could not reach server.");
     } finally {
       setValidating(false);
     }
@@ -653,22 +646,16 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
     setErrorMsg("");
     try {
       const res  = await fetch(`${API_BASE}/api/create-chat`, {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ userId: clerkUser?.id || "anonymous" }),
+        body: JSON.stringify({ userId: clerkUser?.id || "anonymous" }),
       });
       const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || "Failed to create chat room.");
-        return;
-      }
-
+      if (!res.ok) throw new Error(data.error || "Creation failed");
       try { await navigator.clipboard.writeText(data.inviteLink); } catch {}
-
       onJoin(data.token, data.roomId);
-    } catch {
-      setErrorMsg("Could not reach server. Is the backend running?");
+    } catch (err) {
+      setErrorMsg(err.message || "Server error");
     } finally {
       setCreating(false);
     }
@@ -737,37 +724,38 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
   );
 };
 
-// ─── ChatScreen Component ────────────────────────────────────────────────────
+// ─── ChatScreen Component (with mobile sidebar) ──────────────────────────────
 const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
-  const [message,       setMessage]       = useState("");
-  const [messages,      setMessages]      = useState([]);
-  const [image,         setImage]         = useState(null);
-  const [imagePreview,  setImgPrev]       = useState(null);
-  const [users,         setUsers]         = useState([]);
-  const [typing,        setTyping]        = useState("");
-  const [showEmoji,     setShowEmoji]     = useState(false);
-  const [lightbox,      setLightbox]      = useState(null);
-  const [reactions,     setReactions]     = useState({});
-  const [activePicker,  setActivePicker]  = useState(null);
-  const [toast,         setToast]         = useState("");
-  const [toastType,     setToastType]     = useState("info");
-  const [imgUploading,  setImgUploading]  = useState(false);
-  const [loadingHistory,setLoadingHistory]= useState(true);
-  const [linkCopied,    setLinkCopied]    = useState(false);
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImgPrev] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [typing, setTyping] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const [reactions, setReactions] = useState({});
+  const [activePicker, setActivePicker] = useState(null);
+  const [toast, setToast] = useState("");
+  const [toastType, setToastType] = useState("info");
+  const [imgUploading, setImgUploading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [messageBuffer, setMessageBuffer] = useState([]);
-  const [contextMenu,   setContextMenu]   = useState({ visible: false, x: 0, y: 0, msgId: null, sender: null });
-  const [sidebarOpen,   setSidebarOpen]   = useState(false);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null, sender: null });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const endRef      = useRef();
-  const fileRef     = useRef();
-  const inputRef    = useRef();
+  const endRef = useRef();
+  const fileRef = useRef();
+  const inputRef = useRef();
   const typingTimer = useRef();
 
   const displayRoom = shortRoomId(roomId);
 
   const showToast = (msg, type = "info") => {
-    setToast(msg); setToastType(type);
+    setToast(msg);
+    setToastType(type);
     setTimeout(() => setToast(""), 3000);
   };
 
@@ -796,13 +784,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
   const handleContextMenu = (e, msgId, sender) => {
     e.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      msgId,
-      sender,
-    });
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId, sender });
   };
 
   const closeContextMenu = () => {
@@ -824,6 +806,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     }
   }, [contextMenu.visible]);
 
+  // Socket connection and handlers
   useEffect(() => {
     socket.emit("join_room", { username, token });
 
@@ -837,14 +820,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       setMessages(sortedHistory);
       setLoadingHistory(false);
       setHistoryLoaded(true);
-
       setMessageBuffer(buffer => {
         if (buffer.length === 0) return [];
         const newMessages = [...sortedHistory];
         for (const msg of buffer) {
-          if (!newMessages.some(m => m.id === msg.id)) {
-            newMessages.push(msg);
-          }
+          if (!newMessages.some(m => m.id === msg.id)) newMessages.push(msg);
         }
         newMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         setMessages(newMessages);
@@ -856,10 +836,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       if (!historyLoaded) {
         setMessageBuffer(prev => [...prev, data]);
       } else {
-        setMessages(prev => {
-          if (prev.some(m => m.id === data.id)) return prev;
-          return [...prev, data];
-        });
+        setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data]);
       }
     };
 
@@ -867,10 +844,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       if (!historyLoaded) {
         setMessageBuffer(prev => [...prev, data]);
       } else {
-        setMessages(prev => {
-          if (prev.some(m => m.id === data.id)) return prev;
-          return [...prev, data];
-        });
+        setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data]);
         setImgUploading(false);
       }
     };
@@ -971,9 +945,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const handleTyping = () => {
     socket.emit("typing_start", { room: roomId, username });
     clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(
-      () => socket.emit("typing_stop", { room: roomId }), 1200
-    );
+    typingTimer.current = setTimeout(() => socket.emit("typing_stop", { room: roomId }), 1200);
   };
 
   const addReaction = (msgId, emoji) => {
@@ -991,7 +963,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     if (!ts) return "";
     try {
       const d = new Date(ts);
-      if (!isNaN(d)) return d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+      if (!isNaN(d)) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } catch {}
     return ts;
   };
@@ -1012,7 +984,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         <div className="users-section">
           <div className="section-label">Members — {users.length}</div>
           {users.map((u, i) => (
-            <div key={u.id} className="user-item" style={{ animationDelay:`${i * 0.05}s` }}>
+            <div key={u.id} className="user-item" style={{ animationDelay: `${i * 0.05}s` }}>
               <div className="online-ring"><div className="avatar" style={getAvatarStyle(u.username)}>{initials(u.username)}</div></div>
               <span className="user-name">{u.username}</span>
               {u.id === mySocketId && <span className="you-tag">you</span>}
@@ -1022,8 +994,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         <div className="sidebar-footer">
           <div className="my-info">
             {clerkUser?.imageUrl
-              ? <img src={clerkUser.imageUrl} alt="" style={{ width:38, height:38, borderRadius:11, objectFit:"cover" }} />
-              : <div className="avatar" style={{ ...getAvatarStyle(username), width:38, height:38, borderRadius:11, fontSize:14 }}>{initials(username)}</div>}
+              ? <img src={clerkUser.imageUrl} alt="" style={{ width: 38, height: 38, borderRadius: 11, objectFit: "cover" }} />
+              : <div className="avatar" style={{ ...getAvatarStyle(username), width: 38, height: 38, borderRadius: 11, fontSize: 14 }}>{initials(username)}</div>}
             <div><div className="my-name">{username}</div><div className="my-status">● Active</div></div>
           </div>
           <SignOutButton><button className="sidebar-signout">Sign out</button></SignOutButton>
@@ -1057,15 +1029,15 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 const msgReactions = reactions[msg.id] || {};
                 return (
                   <div key={msg.id} className={`msg-row ${isOwn ? "own" : ""}`}>
-                    {!isOwn && <div style={{ width:30, flexShrink:0 }}>{showAvatar && <div className="msg-avatar" style={getAvatarStyle(msg.sender)}>{initials(msg.sender)}</div>}</div>}
+                    {!isOwn && <div style={{ width: 30, flexShrink: 0 }}>{showAvatar && <div className="msg-avatar" style={getAvatarStyle(msg.sender)}>{initials(msg.sender)}</div>}</div>}
                     <div className="msg-content">
                       {showAvatar && !isOwn && <div className="msg-sender">{msg.sender}</div>}
-                      <div style={{ position:"relative" }}>
+                      <div style={{ position: "relative" }}>
                         <div
                           className={`msg-bubble ${isOwn ? "own" : "other"}`}
                           onContextMenu={(e) => { e.preventDefault(); handleContextMenu(e, msg.id, msg.sender); }}
                           onDoubleClick={() => setActivePicker(p => p === msg.id ? null : msg.id)}
-                          style={{ cursor:"pointer" }}
+                          style={{ cursor: "pointer" }}
                           title="Long press / right‑click for actions | Double‑tap to react"
                         >
                           {msg.type === "image" ? (
@@ -1081,7 +1053,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                               onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }}
                             />
                           ) : msg.message}
-                          {msg.type === "image" && <span style={{ display:"none", color:"var(--rose)", fontSize:12 }}>[Image failed to load]</span>}
+                          {msg.type === "image" && <span style={{ display: "none", color: "var(--rose)", fontSize: 12 }}>[Image failed to load]</span>}
                         </div>
                         {activePicker === msg.id && (
                           <div className="reaction-picker">
@@ -1098,4 +1070,135 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                       )}
                       <div className="msg-time">{formatTime(msg.timestamp)}</div>
                     </div>
-                    {isOwn && <div style={{ width:30, flexS
+                    {isOwn && <div style={{ width: 30, flexShrink: 0 }} />}
+                  </div>
+                );
+              })}
+            </>
+          )}
+          <div ref={endRef} />
+        </div>
+
+        {contextMenu.visible && (
+          <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+            <div className="reaction-row">
+              {REACTIONS.map(emoji => (
+                <span key={emoji} className="reaction-opt" onClick={() => { addReaction(contextMenu.msgId, emoji); closeContextMenu(); }}>
+                  {emoji}
+                </span>
+              ))}
+            </div>
+            {contextMenu.sender === username && (
+              <>
+                <div className="context-menu-divider" />
+                <div className="context-menu-item" onClick={deleteMessage}>🗑️ Delete message</div>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="typing-bar">{typing && <><div className="typing-dots"><span /><span /><span /></div>{typing} is typing…</>}</div>
+
+        <div className="input-bar" style={{ position: "relative" }}>
+          {imgUploading && <div className="uploading-indicator"><span className="spin-icon">⏳</span> Uploading to Cloudinary…</div>}
+          {imagePreview && !imgUploading && (
+            <div className="image-preview">
+              <img className="preview-thumb" src={imagePreview} alt="preview" />
+              <span className="preview-name">{image?.name}</span>
+              <div className="preview-remove" onClick={() => {
+                setImage(null);
+                if (imagePreview) URL.revokeObjectURL(imagePreview);
+                setImgPrev(null);
+                if (fileRef.current) fileRef.current.value = "";
+              }}>✕</div>
+              <button className="icon-btn accent" onClick={sendImage} style={{ width: 36, height: 36 }}>↑</button>
+            </div>
+          )}
+          <div className="input-row">
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+            <button className="icon-btn" onClick={() => fileRef.current.click()} disabled={imgUploading} title="Attach image">📎</button>
+            <textarea
+              ref={inputRef}
+              className="msg-input"
+              rows={1}
+              value={message}
+              placeholder="Message your private group…"
+              onChange={e => { setMessage(e.target.value); handleTyping(); }}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+              style={{ height: "42px", lineHeight: "18px", paddingTop: "12px" }}
+            />
+            <button className="icon-btn" onClick={() => setShowEmoji(p => !p)} title="Emoji">😊</button>
+            <button className="icon-btn accent" onClick={sendMessage} title="Send (Enter)">➤</button>
+          </div>
+          {showEmoji && <div className="emoji-picker">{EMOJI_PANEL.map(e => <span key={e} className="emoji-btn" onClick={() => insertEmoji(e)}>{e}</span>)}</div>}
+        </div>
+      </main>
+
+      {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}><img src={lightbox} alt="full" /></div>}
+      {toast && <div className={`toast ${toastType === "error" ? "error" : ""}`}>{toast}</div>}
+    </div>
+  );
+};
+
+// ─── Root Chat ────────────────────────────────────────────────────────────────
+const Chat = () => {
+  const { isSignedIn, isLoaded, user } = useUser();
+  const [token, setToken] = useState(null);
+  const [roomId, setRoomId] = useState(null);
+  const [joined, setJoined] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get("token");
+    if (urlToken) {
+      setToken(urlToken);
+      try { sessionStorage.setItem("nexchat_token", urlToken); } catch {}
+    } else {
+      try {
+        const saved = sessionStorage.getItem("nexchat_token");
+        if (saved) setToken(saved);
+      } catch {}
+    }
+  }, []);
+
+  const displayName =
+    user?.fullName ||
+    user?.username ||
+    user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+    "User";
+
+  if (!isLoaded) return <div className="clerk-wrapper"><div style={{ color: "var(--muted)", display: "flex", alignItems: "center", gap: 8 }}><span className="spin-icon">⏳</span> Loading…</div></div>;
+  if (!isSignedIn) return <div className="clerk-wrapper"><SignIn /></div>;
+  if (!joined) {
+    return (
+      <PrivateJoinScreen
+        clerkUser={user}
+        initialToken={token}
+        onJoin={(tok, rId) => {
+          setToken(tok);
+          setRoomId(rId);
+          setJoined(true);
+          try { sessionStorage.setItem("nexchat_token", tok); } catch {}
+          window.history.replaceState({}, "", window.location.pathname);
+        }}
+      />
+    );
+  }
+
+  return (
+    <ChatScreen
+      username={displayName}
+      roomId={roomId}
+      token={token}
+      clerkUser={user}
+      onLeave={() => {
+        setJoined(false);
+        setToken(null);
+        setRoomId(null);
+        try { sessionStorage.removeItem("nexchat_token"); } catch {}
+      }}
+    />
+  );
+};
+
+export default Chat;
