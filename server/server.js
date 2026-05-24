@@ -51,6 +51,7 @@ const messageSchema = new mongoose.Schema({
 }, { timestamps: false });
 
 messageSchema.index({ room: 1, timestamp: -1 });
+messageSchema.index({ message: "text" });
 const Message = mongoose.models.Message || mongoose.model("Message", messageSchema);
 
 // ─── PrivateRoom Schema ───────────────────────────────────────────────────────
@@ -76,6 +77,64 @@ async function resolveToken(token) {
     }
   }
   return null;
+}
+
+const serializeMessage = (msg) => ({
+  ...msg,
+  id: msg._id.toString(),
+});
+
+async function fetchMessageContext(roomId, messageId, windowSize = 15) {
+  if (!mongoose.Types.ObjectId.isValid(messageId)) {
+    return null;
+  }
+
+  const center = await Message.findOne({ _id: messageId, room: roomId }).lean();
+  if (!center) {
+    return null;
+  }
+
+  const earlierDocs = await Message
+    .find({
+      room: roomId,
+      $or: [
+        { timestamp: { $lt: center.timestamp } },
+        { timestamp: center.timestamp, _id: { $lt: center._id } },
+      ],
+    })
+    .sort({ timestamp: -1, _id: -1 })
+    .limit(windowSize)
+    .lean();
+
+  const laterDocs = await Message
+    .find({
+      room: roomId,
+      $or: [
+        { timestamp: { $gt: center.timestamp } },
+        { timestamp: center.timestamp, _id: { $gt: center._id } },
+      ],
+    })
+    .sort({ timestamp: 1, _id: 1 })
+    .limit(windowSize)
+    .lean();
+
+  const position = await Message.countDocuments({
+    room: roomId,
+    $or: [
+      { timestamp: { $lt: center.timestamp } },
+      { timestamp: center.timestamp, _id: { $lte: center._id } },
+    ],
+  });
+
+  return {
+    anchorId: center._id.toString(),
+    position,
+    messages: [
+      ...earlierDocs.reverse().map(serializeMessage),
+      serializeMessage(center),
+      ...laterDocs.map(serializeMessage),
+    ],
+  };
 }
 
 // ─── Express + Socket.IO ──────────────────────────────────────────────────────
@@ -135,6 +194,64 @@ app.get("/api/validate-token/:token", async (req, res) => {
   } catch (err) {
     console.error("❌ Validate token error:", err.message);
     res.status(500).json({ error: "Token validation failed." });
+  }
+});
+
+app.get("/api/search", async (req, res) => {
+  try {
+    const token = String(req.query.token || "");
+    const roomId = String(req.query.roomId || "");
+    const query = String(req.query.q || "").trim();
+
+    if (!token || token.length < 8) {
+      return res.status(400).json({ error: "A valid room token is required." });
+    }
+
+    if (!query) {
+      return res.status(400).json({ error: "Search query is required." });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Search is unavailable right now." });
+    }
+
+    const resolvedRoomId = await resolveToken(token);
+    if (!resolvedRoomId) {
+      return res.status(404).json({ error: "Invalid or expired invite link." });
+    }
+
+    if (roomId && roomId !== resolvedRoomId) {
+      return res.status(403).json({ error: "Search is only allowed in the active room." });
+    }
+
+    const results = await Message.find(
+      {
+        room: resolvedRoomId,
+        type: "text",
+        $text: { $search: query },
+      },
+      {
+        score: { $meta: "textScore" },
+      }
+    )
+      .sort({ score: { $meta: "textScore" }, timestamp: -1 })
+      .limit(20)
+      .lean();
+
+    res.json({
+      roomId: resolvedRoomId,
+      query,
+      results: results.map((msg) => ({
+        id: msg._id.toString(),
+        room: msg.room,
+        sender: msg.sender,
+        message: msg.message,
+        timestamp: msg.timestamp,
+      })),
+    });
+  } catch (err) {
+    console.error("Search error:", err.message);
+    res.status(500).json({ error: "Search failed." });
   }
 });
 
@@ -210,10 +327,7 @@ io.on("connection", (socket) => {
           .sort({ timestamp: 1 })
           .limit(50)
           .lean();
-        const historyWithStrId = history.map(msg => ({
-          ...msg,
-          id: msg._id.toString()
-        }));
+        const historyWithStrId = history.map(serializeMessage);
         socket.emit("chat_history", historyWithStrId);
       } else {
         socket.emit("chat_history", []);
@@ -343,6 +457,37 @@ io.on("connection", (socket) => {
     } catch (err) {
       console.error("Delete error:", err.message);
       socket.emit("delete_error", { message: "Failed to delete message" });
+    }
+  });
+
+  socket.on("load_message_context", async ({ token, messageId }) => {
+    try {
+      if (!token || !messageId) {
+        socket.emit("message_context_error", { message: "Token and message id are required." });
+        return;
+      }
+
+      const actualRoom = await resolveToken(token);
+      if (!actualRoom || actualRoom !== currentRoom) {
+        socket.emit("message_context_error", { message: "You are not authorized for this room." });
+        return;
+      }
+
+      if (mongoose.connection.readyState !== 1) {
+        socket.emit("message_context_error", { message: "Message history is unavailable right now." });
+        return;
+      }
+
+      const context = await fetchMessageContext(actualRoom, messageId);
+      if (!context) {
+        socket.emit("message_context_error", { message: "Message not found." });
+        return;
+      }
+
+      socket.emit("message_context", context);
+    } catch (err) {
+      console.error("Message context error:", err.message);
+      socket.emit("message_context_error", { message: "Could not load the selected message." });
     }
   });
 
