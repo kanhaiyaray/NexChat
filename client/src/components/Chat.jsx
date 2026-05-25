@@ -1440,10 +1440,10 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
   const [highlightedMessageId, setHighlightedMessageId] = useState("");
 
-  // --- Pin & read receipts state ---
+  // Pinning & read receipts state
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [pinsOpen, setPinsOpen] = useState(true);
-  const [readReceipts, setReadReceipts] = useState({}); // { msgId: { readBy: [], count: number } }
+  const [readReceipts, setReadReceipts] = useState({});
 
   const endRef = useRef(null);
   const fileRef = useRef(null);
@@ -1563,7 +1563,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
   useEffect(() => {
     socket.emit("join_room", { username, token });
-    // fetch pinned messages for this room
     socket.emit("get_pinned_messages", { room: roomId });
 
     const onJoinError = ({ message: errorMessage }) => {
@@ -1682,7 +1681,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       showToast(errorMessage || "Could not load the selected message.", "error");
     };
 
-    // --- Pin listeners ---
+    // Pin listeners
     const onPinnedMessagesList = (pinnedList) => {
       setPinnedMessages(pinnedList);
     };
@@ -1695,7 +1694,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       showToast(`Message unpinned (${pinnedCount}/5)`);
     };
 
-    // --- Read receipts listener ---
+    // Read receipts listener
     const onReceiptsUpdated = ({ msgId, readBy, count }) => {
       setReadReceipts(prev => ({
         ...prev,
@@ -2023,7 +2022,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
           ))}
         </div>
 
-        {/* Pinned messages section */}
         <div className="pins-section">
           <div className="pins-header" onClick={() => setPinsOpen(!pinsOpen)}>
             <span>📌 Pinned Messages ({pinnedMessages.length}/5)</span>
@@ -2371,7 +2369,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 <div className="context-menu-item" onClick={deleteMessage}>
                   Delete message
                 </div>
-                {/* Pin / Unpin options */}
                 <div className="context-menu-item" onClick={() => {
                   socket.emit("pin_message", { room: roomId, msgId: contextMenu.msgId, username });
                   closeContextMenu();

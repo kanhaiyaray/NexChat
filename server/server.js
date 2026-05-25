@@ -61,14 +61,23 @@ messageSchema.index({ room: 1, timestamp: -1 });
 messageSchema.index({ message: "text" });
 const Message = mongoose.models.Message || mongoose.model("Message", messageSchema);
 
-// ─── PrivateRoom Schema ───────────────────────────────────────────────────────
+// ─── Read Receipt Schema ──────────────────────────────────────────────────────
+const readReceiptSchema = new mongoose.Schema({
+  room:      { type: String, required: true, index: true },
+  messageId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  userId:    { type: String, required: true },
+  readAt:    { type: Date, default: Date.now }
+});
+readReceiptSchema.index({ room: 1, messageId: 1, userId: 1 }, { unique: true });
+const ReadReceipt = mongoose.models.ReadReceipt || mongoose.model("ReadReceipt", readReceiptSchema);
+
+// ─── PrivateRoom Schema (with pinnedMessages) ─────────────────────────────────
 const privateRoomSchema = new mongoose.Schema({
   roomId:    { type: String, required: true, unique: true },
   token:     { type: String, required: true, unique: true },
   createdBy: { type: String, default: "anonymous" },
   createdAt: { type: Date,   default: Date.now },
-    pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }]
-
+  pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }]
 });
 const PrivateRoom =
   mongoose.models.PrivateRoom || mongoose.model("PrivateRoom", privateRoomSchema);
@@ -273,7 +282,7 @@ const getUsers = (room) => rooms[room] || [];
 
 const addUser = (room, id, username) => {
   if (!rooms[room]) rooms[room] = [];
-  // 🔥 FIX: Remove any existing entry with the same username (prevents duplicates)
+  // Remove any existing entry with the same username (prevents duplicates)
   rooms[room] = rooms[room].filter(u => u.username !== username);
   // Add the new socket
   rooms[room].push({ id, username });
@@ -339,7 +348,12 @@ io.on("connection", (socket) => {
           .limit(50)
           .lean();
         const historyWithStrId = history.map(serializeMessage);
-        socket.emit("chat_history", historyWithStrId);
+        // Attach read receipts for each message
+        const messagesWithReceipts = await Promise.all(historyWithStrId.map(async (msg) => {
+          const readers = await ReadReceipt.distinct("userId", { room: actualRoom, messageId: msg.id });
+          return { ...msg, readBy: readers, readCount: readers.length };
+        }));
+        socket.emit("chat_history", messagesWithReceipts);
       } else {
         socket.emit("chat_history", []);
       }
@@ -349,7 +363,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Text Message (supports replyTo) ─────────────────────────────────────────
+  // ── Text Message (supports replyTo + auto read receipt) ─────────────────────
   socket.on("send_message", async (data) => {
     let savedMsg = null;
     if (mongoose.connection.readyState === 1) {
@@ -364,6 +378,12 @@ io.on("connection", (socket) => {
           editedAt:  null,
           replyTo:   data.replyTo || null
         }).save();
+        // Auto-read by sender
+        await ReadReceipt.findOneAndUpdate(
+          { room: data.room, messageId: savedMsg._id, userId: data.sender },
+          { readAt: new Date() },
+          { upsert: true }
+        );
       } catch (err) {
         console.error("Message save error:", err.message);
       }
@@ -583,8 +603,8 @@ io.on("connection", (socket) => {
   socket.on("typing_start", ({ room, username }) => {
     socket.to(room).emit("user_typing", { username, isTyping: true });
   });
-   
-    // ─── Pin a message (max 5 per room) ──────────────────────────────────────────
+
+  // ─── Pin a message (max 5 per room) ──────────────────────────────────────────
   socket.on("pin_message", async ({ room, msgId, username }) => {
     if (!currentRoom || currentUser !== username) {
       socket.emit("pin_error", { message: "Not authorized" });
@@ -595,18 +615,15 @@ io.on("connection", (socket) => {
       const privateRoom = await PrivateRoom.findOne({ roomId: room });
       if (!privateRoom) return;
 
-      // Limit check
       if (privateRoom.pinnedMessages.length >= 5) {
         socket.emit("pin_error", { message: "Maximum 5 pinned messages per room." });
         return;
       }
 
-      // Avoid duplicate pins
       if (!privateRoom.pinnedMessages.includes(msgId)) {
         privateRoom.pinnedMessages.push(msgId);
         await privateRoom.save();
 
-        // Populate the full message objects to send back
         const pinnedMsg = await Message.findById(msgId).lean();
         io.to(room).emit("message_pinned", {
           message: serializeMessage(pinnedMsg),
@@ -643,7 +660,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Get all pinned messages for a room (when user joins) ─────────────────────
+  // ─── Get all pinned messages for a room ─────────────────────────────────────
   socket.on("get_pinned_messages", async ({ room }) => {
     try {
       const privateRoom = await PrivateRoom.findOne({ roomId: room }).populate("pinnedMessages");
@@ -656,6 +673,26 @@ io.on("connection", (socket) => {
     } catch (err) {
       console.error("Fetch pinned error:", err.message);
       socket.emit("pinned_messages_list", []);
+    }
+  });
+
+  // ─── Read Receipts ──────────────────────────────────────────────────────────
+  socket.on("message_read", async ({ room, msgId, username }) => {
+    if (!room || !msgId || !username) return;
+    try {
+      await ReadReceipt.findOneAndUpdate(
+        { room, messageId: msgId, userId: username },
+        { readAt: new Date() },
+        { upsert: true }
+      );
+      const readers = await ReadReceipt.distinct("userId", { room, messageId: msgId });
+      io.to(room).emit("receipts_updated", {
+        msgId,
+        readBy: readers,
+        count: readers.length
+      });
+    } catch (err) {
+      console.error("Read receipt error:", err.message);
     }
   });
 
