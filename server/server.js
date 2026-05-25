@@ -39,7 +39,7 @@ const connectDB = async () => {
   }
 };
 
-// ─── Message Schema ───────────────────────────────────────────────────────────
+// ─── Message Schema (with replyTo) ───────────────────────────────────────────
 const messageSchema = new mongoose.Schema({
   room:      { type: String, required: true, index: true },
   sender:    { type: String, required: true },
@@ -47,7 +47,14 @@ const messageSchema = new mongoose.Schema({
   imageUrl:  { type: String, default: "" },
   type:      { type: String, enum: ["text", "image"], default: "text" },
   timestamp: { type: Date, default: Date.now, index: true },
+  edited:    { type: Boolean, default: false },
+  editedAt:  { type: Date, default: null },
   reactions: { type: Map, of: Number, default: {} },
+  replyTo:   {
+    messageId: { type: String, default: null },
+    snippet:   { type: String, default: null },
+    sender:    { type: String, default: null }
+  }
 }, { timestamps: false });
 
 messageSchema.index({ room: 1, timestamp: -1 });
@@ -83,6 +90,8 @@ const serializeMessage = (msg) => ({
   ...msg,
   id: msg._id.toString(),
 });
+
+const EDIT_WINDOW_MS = 5 * 60 * 1000;
 
 async function fetchMessageContext(roomId, messageId, windowSize = 15) {
   if (!mongoose.Types.ObjectId.isValid(messageId)) {
@@ -338,7 +347,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Text Message ────────────────────────────────────────────────────────────
+  // ── Text Message (supports replyTo) ─────────────────────────────────────────
   socket.on("send_message", async (data) => {
     let savedMsg = null;
     if (mongoose.connection.readyState === 1) {
@@ -349,6 +358,9 @@ io.on("connection", (socket) => {
           message:   data.message,
           type:      "text",
           timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+          edited:    false,
+          editedAt:  null,
+          replyTo:   data.replyTo || null
         }).save();
       } catch (err) {
         console.error("Message save error:", err.message);
@@ -363,7 +375,10 @@ io.on("connection", (socket) => {
       type: "text",
       timestamp: data.timestamp || new Date().toISOString(),
       imageUrl: "",
-      reactions: savedMsg?.reactions || {}
+      edited: savedMsg?.edited || false,
+      editedAt: savedMsg?.editedAt || null,
+      reactions: savedMsg?.reactions || {},
+      replyTo: data.replyTo || null
     };
 
     io.to(data.room).emit("receive_message", finalMessage);
@@ -397,6 +412,8 @@ io.on("connection", (socket) => {
           imageUrl:  uploaded.secure_url,
           type:      "image",
           timestamp: timestamp ? new Date(timestamp) : new Date(),
+          edited:    false,
+          editedAt:  null,
         }).save();
       }
 
@@ -407,6 +424,8 @@ io.on("connection", (socket) => {
         type: "image",
         timestamp: timestamp || new Date().toISOString(),
         message: "",
+        edited: savedMsg?.edited || false,
+        editedAt: savedMsg?.editedAt || null,
         reactions: savedMsg?.reactions || {}
       };
 
@@ -457,6 +476,74 @@ io.on("connection", (socket) => {
     } catch (err) {
       console.error("Delete error:", err.message);
       socket.emit("delete_error", { message: "Failed to delete message" });
+    }
+  });
+
+  socket.on("edit_message", async ({ room, msgId, newMessage, sender }) => {
+    const trimmedMessage = String(newMessage || "").trim();
+
+    if (!room || !msgId || !sender) {
+      socket.emit("edit_error", { message: "Missing edit details." });
+      return;
+    }
+
+    if (!trimmedMessage) {
+      socket.emit("edit_error", { message: "Message cannot be empty." });
+      return;
+    }
+
+    if (trimmedMessage.length > 5000) {
+      socket.emit("edit_error", { message: "Message is too long to edit." });
+      return;
+    }
+
+    if (currentUser !== sender) {
+      socket.emit("edit_error", { message: "Not authorized" });
+      return;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      socket.emit("edit_error", { message: "Editing is unavailable right now." });
+      return;
+    }
+
+    try {
+      const msg = await Message.findById(msgId);
+
+      if (!msg || msg.room !== room) {
+        socket.emit("edit_error", { message: "Message not found." });
+        return;
+      }
+
+      if (msg.type !== "text") {
+        socket.emit("edit_error", { message: "Only text messages can be edited." });
+        return;
+      }
+
+      if (msg.sender !== sender) {
+        socket.emit("edit_error", { message: "You can only edit your own messages." });
+        return;
+      }
+
+      if (Date.now() - new Date(msg.timestamp).getTime() > EDIT_WINDOW_MS) {
+        socket.emit("edit_error", { message: "Editing is only allowed within 5 minutes." });
+        return;
+      }
+
+      msg.message = trimmedMessage;
+      msg.edited = true;
+      msg.editedAt = new Date();
+      await msg.save();
+
+      io.to(room).emit("message_edited", {
+        msgId: msg._id.toString(),
+        message: msg.message,
+        edited: msg.edited,
+        editedAt: msg.editedAt,
+      });
+    } catch (err) {
+      console.error("Edit error:", err.message);
+      socket.emit("edit_error", { message: "Failed to edit message." });
     }
   });
 

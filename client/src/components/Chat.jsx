@@ -16,6 +16,7 @@ const AVATAR_COLORS = [
   ["rgba(251,191,36,.25)", "#fbbf24"],
   ["rgba(248,113,113,.25)", "#f87171"],
 ];
+const EDIT_WINDOW_MS = 5 * 60 * 1000;
 
 const styleId = "nexchat-styles";
 
@@ -629,6 +630,12 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .match-highlight.targeted { background: var(--highlight-strong); }
     .msg-time { margin-top: 3px; padding: 0 4px; color: var(--muted); font-size: 10px; }
     .msg-row.own .msg-time { text-align: right; }
+    .edited-tag {
+      margin-left: 6px;
+      color: var(--cyan);
+      font-size: 10px;
+      letter-spacing: .03em;
+    }
     .msg-img {
       display: block;
       max-width: 220px;
@@ -856,6 +863,55 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .context-menu-item:hover { background: rgba(255,255,255,.08); }
     .context-menu-divider { height: 1px; margin: 6px 0; background: var(--border); }
     .reaction-row { gap: 8px; padding: 4px; }
+    .message-edit-box {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(99,210,255,.18);
+      background: rgba(255,255,255,.04);
+    }
+    .message-edit-input {
+      width: 100%;
+      min-height: 84px;
+      resize: vertical;
+      border: 1px solid rgba(99,210,255,.12);
+      border-radius: 12px;
+      background: rgba(8,13,24,.72);
+      color: var(--text);
+      font: inherit;
+      line-height: 1.5;
+      padding: 12px 14px;
+      outline: none;
+    }
+    .message-edit-input:focus {
+      border-color: rgba(99,210,255,.32);
+      box-shadow: 0 0 0 3px rgba(61,214,245,.08);
+    }
+    .message-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .message-edit-btn {
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 10px;
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: .16s ease;
+    }
+    .message-edit-btn:hover { background: rgba(255,255,255,.1); }
+    .message-edit-btn.primary {
+      border: none;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      color: #070b14;
+    }
+    .message-edit-btn:disabled { opacity: .5; cursor: not-allowed; }
 
     .search-inline-panel {
       position: absolute;
@@ -965,6 +1021,75 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
 
     .sidebar-overlay { display: none; }
     .mobile-menu-btn, .mobile-menu-close { display: none; }
+
+    /* Reply Preview & Quote Styles */
+    .reply-preview {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: rgba(61,214,245,.08);
+      border-left: 3px solid var(--cyan);
+      border-radius: 12px;
+      font-size: 13px;
+    }
+    .reply-preview-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .reply-preview-label {
+      color: var(--cyan);
+      font-weight: 500;
+    }
+    .reply-preview-snippet {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .reply-preview-cancel {
+      background: rgba(255,255,255,.05);
+      border: none;
+      color: var(--muted);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .reply-preview-cancel:hover {
+      background: rgba(244,114,182,.2);
+      color: var(--rose);
+    }
+
+    .msg-quote {
+      margin-bottom: 6px;
+      padding: 5px 8px;
+      background: rgba(255,255,255,.03);
+      border-left: 2px solid var(--violet);
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .msg-quote:hover {
+      background: rgba(167,139,250,.1);
+      border-left-color: var(--cyan);
+    }
+    .quote-sender {
+      color: var(--violet);
+      font-weight: 500;
+      margin-right: 6px;
+    }
+    .quote-text {
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     @media (max-width: 900px) {
       .chat-header { flex-wrap: wrap; }
@@ -1130,6 +1255,17 @@ function mergeReactionMaps(current, messages = []) {
   return next;
 }
 
+function isEditableMessage(message, username) {
+  if (!message || message.type !== "text" || message.sender !== username) {
+    return false;
+  }
+  const timestamp = new Date(message.timestamp).getTime();
+  if (Number.isNaN(timestamp)) {
+    return false;
+  }
+  return Date.now() - timestamp <= EDIT_WINDOW_MS;
+}
+
 const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
   const [pastedLink, setPastedLink] = useState("");
   const [creating, setCreating] = useState(false);
@@ -1292,11 +1428,14 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState("info");
   const [imgUploading, setImgUploading] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState("");
+  const [editingDraft, setEditingDraft] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [linkCopied, setLinkCopied] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [messageBuffer, setMessageBuffer] = useState([]);
-  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null, sender: null });
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null, sender: null, type: "text" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1305,6 +1444,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [searchError, setSearchError] = useState("");
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
   const [highlightedMessageId, setHighlightedMessageId] = useState("");
+  const [replyingTo, setReplyingTo] = useState(null); // { id, sender, snippet }
 
   const endRef = useRef(null);
   const fileRef = useRef(null);
@@ -1372,19 +1512,55 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  const startReply = (msgId, sender, messageText) => {
+    const snippet = messageText.length > 80 ? messageText.slice(0, 80) + "…" : messageText;
+    setReplyingTo({ id: msgId, sender, snippet });
+    inputRef.current?.focus();
+  };
+
+  const cancelReply = () => setReplyingTo(null);
+
   const handleContextMenu = (event, msgId, sender) => {
     event.preventDefault();
-    setContextMenu({ visible: true, x: event.clientX, y: event.clientY, msgId, sender });
+    const targetMessage = messages.find((msg) => msg.id === msgId);
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      msgId,
+      sender,
+      type: targetMessage?.type || "text",
+    });
   };
 
   const closeContextMenu = () => {
-    setContextMenu({ visible: false, x: 0, y: 0, msgId: null, sender: null });
+    setContextMenu({ visible: false, x: 0, y: 0, msgId: null, sender: null, type: "text" });
   };
 
   const deleteMessage = () => {
     if (!contextMenu.msgId) return;
     socket.emit("delete_message", { room: roomId, msgId: contextMenu.msgId, username });
     closeContextMenu();
+  };
+
+  const beginEditingMessage = () => {
+    const { msgId } = contextMenu;
+    if (!msgId) return;
+    const targetMessage = messages.find((msg) => msg.id === msgId);
+    if (!targetMessage || !isEditableMessage(targetMessage, username)) {
+      showToast("This message can no longer be edited.", "error");
+      closeContextMenu();
+      return;
+    }
+    setEditingMessageId(msgId);
+    setEditingDraft(targetMessage.message || "");
+    closeContextMenu();
+  };
+
+  const cancelEditingMessage = () => {
+    setEditingMessageId("");
+    setEditingDraft("");
+    setEditSaving(false);
   };
 
   useEffect(() => {
@@ -1468,10 +1644,29 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         return next;
       });
       setHighlightedMessageId((prev) => (prev === msgId ? "" : prev));
+      setEditingMessageId((prev) => (prev === msgId ? "" : prev));
+      setEditingDraft("");
+      setEditSaving(false);
     };
 
     const onDeleteError = ({ message: errorMessage }) => {
       showToast(`Delete failed: ${errorMessage}`, "error");
+    };
+
+    const onMessageEdited = ({ msgId, message, edited, editedAt }) => {
+      setMessages((prev) => prev.map((msg) => (
+        msg.id === msgId
+          ? { ...msg, message, edited, editedAt }
+          : msg
+      )));
+      setEditingMessageId((prev) => (prev === msgId ? "" : prev));
+      setEditingDraft("");
+      setEditSaving(false);
+    };
+
+    const onEditError = ({ message: errorMessage }) => {
+      setEditSaving(false);
+      showToast(errorMessage || "Could not edit that message.", "error");
     };
 
     const onMessageContext = ({ anchorId, messages: contextMessages, position }) => {
@@ -1498,6 +1693,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     socket.on("image_error", onImageError);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("delete_error", onDeleteError);
+    socket.on("message_edited", onMessageEdited);
+    socket.on("edit_error", onEditError);
     socket.on("message_context", onMessageContext);
     socket.on("message_context_error", onMessageContextError);
 
@@ -1512,6 +1709,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       socket.off("image_error", onImageError);
       socket.off("message_deleted", onMessageDeleted);
       socket.off("delete_error", onDeleteError);
+      socket.off("message_edited", onMessageEdited);
+      socket.off("edit_error", onEditError);
       socket.off("message_context", onMessageContext);
       socket.off("message_context_error", onMessageContextError);
     };
@@ -1555,9 +1754,15 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       message: trimmed,
       sender: username,
       timestamp: new Date().toISOString(),
+      replyTo: replyingTo ? {
+        messageId: replyingTo.id,
+        snippet: replyingTo.snippet,
+        sender: replyingTo.sender
+      } : null
     });
     setMessage("");
     setShowEmoji(false);
+    cancelReply();
     inputRef.current?.focus();
   };
 
@@ -1617,6 +1822,41 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const insertEmoji = (emoji) => {
     setMessage((current) => current + emoji);
     inputRef.current?.focus();
+  };
+
+  const saveEditedMessage = () => {
+    const trimmedDraft = editingDraft.trim();
+    if (!editingMessageId) return;
+    if (!trimmedDraft) {
+      showToast("Edited message cannot be empty.", "error");
+      return;
+    }
+
+    const currentMessage = messages.find((msg) => msg.id === editingMessageId);
+    if (!currentMessage) {
+      showToast("Message not found.", "error");
+      cancelEditingMessage();
+      return;
+    }
+
+    if (!isEditableMessage(currentMessage, username)) {
+      showToast("Editing is only allowed within 5 minutes.", "error");
+      cancelEditingMessage();
+      return;
+    }
+
+    if (trimmedDraft === currentMessage.message) {
+      cancelEditingMessage();
+      return;
+    }
+
+    setEditSaving(true);
+    socket.emit("edit_message", {
+      room: roomId,
+      msgId: editingMessageId,
+      newMessage: trimmedDraft,
+      sender: username,
+    });
   };
 
   const runSearch = async (rawValue = searchQuery) => {
@@ -1893,6 +2133,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 const showAvatar = index === 0 || messages[index - 1]?.sender !== msg.sender;
                 const msgReactions = reactions[msg.id] || {};
                 const isTargeted = highlightedMessageId === msg.id;
+                const isEditingThisMessage = editingMessageId === msg.id;
+                const canEditThisMessage = isEditableMessage(msg, username);
 
                 return (
                   <div
@@ -1914,35 +2156,92 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                       {showAvatar && !isOwn ? <div className="msg-sender">{msg.sender}</div> : null}
 
                       <div style={{ position: "relative" }}>
-                        <div
-                          className={`msg-bubble ${isOwn ? "own" : "other"}${isTargeted ? " targeted" : ""}`}
-                          onContextMenu={(event) => handleContextMenu(event, msg.id, msg.sender)}
-                          onDoubleClick={() => setActivePicker((current) => (current === msg.id ? null : msg.id))}
-                          style={{ cursor: "pointer" }}
-                          title="Right-click for actions or double-click to react"
-                        >
-                          {msg.type === "image" ? (
-                            <>
-                              <img
-                                className="msg-img"
-                                src={msg.imageUrl}
-                                alt="shared"
-                                onClick={() => setLightbox(msg.imageUrl)}
-                                onContextMenu={(event) => handleContextMenu(event, msg.id, msg.sender)}
-                                onError={(event) => {
-                                  event.currentTarget.style.display = "none";
-                                  const nextNode = event.currentTarget.nextElementSibling;
-                                  if (nextNode) nextNode.style.display = "block";
+                        {isEditingThisMessage ? (
+                          <div className="message-edit-box">
+                            <textarea
+                              className="message-edit-input"
+                              value={editingDraft}
+                              onChange={(event) => setEditingDraft(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  cancelEditingMessage();
+                                }
+                                if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                                  event.preventDefault();
+                                  saveEditedMessage();
+                                }
+                              }}
+                              placeholder="Edit your message..."
+                            />
+                            <div className="message-edit-actions">
+                              <button
+                                type="button"
+                                className="message-edit-btn"
+                                onClick={cancelEditingMessage}
+                                disabled={editSaving}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="message-edit-btn primary"
+                                onClick={saveEditedMessage}
+                                disabled={editSaving || !editingDraft.trim()}
+                              >
+                                {editSaving ? "Saving..." : "Save"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className={`msg-bubble ${isOwn ? "own" : "other"}${isTargeted ? " targeted" : ""}`}
+                            onContextMenu={(event) => handleContextMenu(event, msg.id, msg.sender)}
+                            onDoubleClick={() => setActivePicker((current) => (current === msg.id ? null : msg.id))}
+                            style={{ cursor: "pointer" }}
+                            title="Right-click for actions or double-click to react"
+                          >
+                            {msg.replyTo && msg.replyTo.messageId && (
+                              <div
+                                className="msg-quote"
+                                onClick={() => {
+                                  const quotedNode = messageRefs.current.get(msg.replyTo.messageId);
+                                  if (quotedNode) {
+                                    quotedNode.scrollIntoView({ behavior: "smooth", block: "center" });
+                                    quotedNode.classList.add("targeted");
+                                    setTimeout(() => quotedNode.classList.remove("targeted"), 1500);
+                                  } else {
+                                    pendingScrollTargetRef.current = msg.replyTo.messageId;
+                                    socket.emit("load_message_context", { token, messageId: msg.replyTo.messageId });
+                                  }
                                 }}
-                              />
-                              <span style={{ display: "none", color: "var(--rose)", fontSize: 12 }}>[Image failed to load]</span>
-                            </>
-                          ) : (
-                            activeSearchTerm && isTargeted
-                              ? highlightText(msg.message, activeSearchTerm, true)
-                              : msg.message
-                          )}
-                        </div>
+                              >
+                                <span className="quote-sender">{msg.replyTo.sender}</span>
+                                <span className="quote-text">“{msg.replyTo.snippet}”</span>
+                              </div>
+                            )}
+                            {msg.type === "image" ? (
+                              <>
+                                <img
+                                  className="msg-img"
+                                  src={msg.imageUrl}
+                                  alt="shared"
+                                  onClick={() => setLightbox(msg.imageUrl)}
+                                  onContextMenu={(event) => handleContextMenu(event, msg.id, msg.sender)}
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                    const nextNode = event.currentTarget.nextElementSibling;
+                                    if (nextNode) nextNode.style.display = "block";
+                                  }}
+                                />
+                                <span style={{ display: "none", color: "var(--rose)", fontSize: 12 }}>[Image failed to load]</span>
+                              </>
+                            ) : (
+                              activeSearchTerm && isTargeted
+                                ? highlightText(msg.message, activeSearchTerm, true)
+                                : msg.message
+                            )}
+                          </div>
+                        )}
 
                         {activePicker === msg.id ? (
                           <div className="reaction-picker">
@@ -1966,7 +2265,10 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                         </div>
                       ) : null}
 
-                      <div className="msg-time">{formatTime(msg.timestamp)}</div>
+                      <div className="msg-time">
+                        {formatTime(msg.timestamp)}
+                        {msg.edited ? <span className="edited-tag">(edited)</span> : null}
+                      </div>
                     </div>
 
                     {isOwn ? <div style={{ width: 30, flexShrink: 0 }} /> : null}
@@ -1988,11 +2290,25 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 </span>
               ))}
             </div>
+            <div className="context-menu-item" onClick={() => {
+              const targetMsg = messages.find(m => m.id === contextMenu.msgId);
+              if (targetMsg) {
+                startReply(targetMsg.id, targetMsg.sender, targetMsg.message);
+                closeContextMenu();
+              }
+            }}>
+              💬 Reply
+            </div>
             {contextMenu.sender === username ? (
               <>
                 <div className="context-menu-divider" />
+                {contextMenu.type === "text" && isEditableMessage(messages.find((msg) => msg.id === contextMenu.msgId), username) ? (
+                  <div className="context-menu-item" onClick={beginEditingMessage}>
+                    Edit message
+                  </div>
+                ) : null}
                 <div className="context-menu-item" onClick={deleteMessage}>
-                  🗑 Delete message
+                  Delete message
                 </div>
               </>
             ) : null}
@@ -2013,6 +2329,16 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         </div>
 
         <div className="input-bar" style={{ position: "relative" }}>
+          {replyingTo && (
+            <div className="reply-preview">
+              <div className="reply-preview-content">
+                <span className="reply-preview-label">Replying to {replyingTo.sender}</span>
+                <span className="reply-preview-snippet">“{replyingTo.snippet}”</span>
+              </div>
+              <button className="reply-preview-cancel" onClick={cancelReply}>×</button>
+            </div>
+          )}
+
           {imgUploading ? (
             <div className="uploading-indicator">
               <span className="spin-icon">⏳</span>
