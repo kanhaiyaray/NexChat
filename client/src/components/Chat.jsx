@@ -1022,75 +1022,6 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .sidebar-overlay { display: none; }
     .mobile-menu-btn, .mobile-menu-close { display: none; }
 
-    /* Reply Preview & Quote Styles */
-    .reply-preview {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-      padding: 8px 12px;
-      background: rgba(61,214,245,.08);
-      border-left: 3px solid var(--cyan);
-      border-radius: 12px;
-      font-size: 13px;
-    }
-    .reply-preview-content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .reply-preview-label {
-      color: var(--cyan);
-      font-weight: 500;
-    }
-    .reply-preview-snippet {
-      color: var(--muted);
-      font-style: italic;
-    }
-    .reply-preview-cancel {
-      background: rgba(255,255,255,.05);
-      border: none;
-      color: var(--muted);
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 18px;
-    }
-    .reply-preview-cancel:hover {
-      background: rgba(244,114,182,.2);
-      color: var(--rose);
-    }
-
-    .msg-quote {
-      margin-bottom: 6px;
-      padding: 5px 8px;
-      background: rgba(255,255,255,.03);
-      border-left: 2px solid var(--violet);
-      border-radius: 10px;
-      font-size: 12px;
-      color: var(--muted);
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .msg-quote:hover {
-      background: rgba(167,139,250,.1);
-      border-left-color: var(--cyan);
-    }
-    .quote-sender {
-      color: var(--violet);
-      font-weight: 500;
-      margin-right: 6px;
-    }
-    .quote-text {
-      font-style: italic;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
     @media (max-width: 900px) {
       .chat-header { flex-wrap: wrap; }
       .header-meta { width: 100%; justify-content: space-between; }
@@ -1156,6 +1087,70 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
       .typing-bar { padding: 0 16px; }
       .header-search-form { padding-left: 12px; }
       .header-search-submit { padding: 9px 10px; }
+    }
+
+    /* === Pinned messages styles === */
+    .pins-section {
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+    }
+    .pins-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--cyan);
+      user-select: none;
+    }
+    .pins-header:hover {
+      background: rgba(255,255,255,.04);
+    }
+    .pins-list {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 0 12px 12px;
+    }
+    .pin-item {
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .pin-item:hover {
+      background: rgba(61,214,245,.1);
+      transform: translateX(2px);
+    }
+    .pin-sender {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--violet);
+    }
+    .pin-snippet {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pins-empty {
+      padding: 12px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* === Read receipt styles === */
+    .read-receipt {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 10px;
+      color: var(--cyan);
+      cursor: help;
     }
   `;
   document.head.appendChild(styleSheet);
@@ -1444,7 +1439,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [searchError, setSearchError] = useState("");
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
   const [highlightedMessageId, setHighlightedMessageId] = useState("");
-  const [replyingTo, setReplyingTo] = useState(null); // { id, sender, snippet }
+
+  // --- Pin & read receipts state ---
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+  const [pinsOpen, setPinsOpen] = useState(true);
+  const [readReceipts, setReadReceipts] = useState({}); // { msgId: { readBy: [], count: number } }
 
   const endRef = useRef(null);
   const fileRef = useRef(null);
@@ -1512,14 +1511,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const startReply = (msgId, sender, messageText) => {
-    const snippet = messageText.length > 80 ? messageText.slice(0, 80) + "…" : messageText;
-    setReplyingTo({ id: msgId, sender, snippet });
-    inputRef.current?.focus();
-  };
-
-  const cancelReply = () => setReplyingTo(null);
-
   const handleContextMenu = (event, msgId, sender) => {
     event.preventDefault();
     const targetMessage = messages.find((msg) => msg.id === msgId);
@@ -1572,6 +1563,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
   useEffect(() => {
     socket.emit("join_room", { username, token });
+    // fetch pinned messages for this room
+    socket.emit("get_pinned_messages", { room: roomId });
 
     const onJoinError = ({ message: errorMessage }) => {
       showToast(errorMessage, "error");
@@ -1584,6 +1577,12 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       const sorted = [...history].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
       setMessages(sorted);
       setReactions(buildReactionsMap(sorted));
+      // Populate read receipts
+      const receiptsMap = {};
+      sorted.forEach(msg => {
+        if (msg.readBy) receiptsMap[msg.id] = { readBy: msg.readBy, count: msg.readCount };
+      });
+      setReadReceipts(receiptsMap);
       setLoadingHistory(false);
       setHistoryLoaded(true);
       shouldAutoScrollRef.current = true;
@@ -1683,6 +1682,27 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       showToast(errorMessage || "Could not load the selected message.", "error");
     };
 
+    // --- Pin listeners ---
+    const onPinnedMessagesList = (pinnedList) => {
+      setPinnedMessages(pinnedList);
+    };
+    const onMessagePinned = ({ message, pinnedCount }) => {
+      setPinnedMessages(prev => [message, ...prev]);
+      showToast(`Message pinned (${pinnedCount}/5)`);
+    };
+    const onMessageUnpinned = ({ msgId, pinnedCount }) => {
+      setPinnedMessages(prev => prev.filter(m => m.id !== msgId));
+      showToast(`Message unpinned (${pinnedCount}/5)`);
+    };
+
+    // --- Read receipts listener ---
+    const onReceiptsUpdated = ({ msgId, readBy, count }) => {
+      setReadReceipts(prev => ({
+        ...prev,
+        [msgId]: { readBy, count }
+      }));
+    };
+
     socket.on("join_error", onJoinError);
     socket.on("chat_history", onChatHistory);
     socket.on("receive_message", onReceiveMessage);
@@ -1697,6 +1717,10 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     socket.on("edit_error", onEditError);
     socket.on("message_context", onMessageContext);
     socket.on("message_context_error", onMessageContextError);
+    socket.on("pinned_messages_list", onPinnedMessagesList);
+    socket.on("message_pinned", onMessagePinned);
+    socket.on("message_unpinned", onMessageUnpinned);
+    socket.on("receipts_updated", onReceiptsUpdated);
 
     return () => {
       socket.off("join_error", onJoinError);
@@ -1713,8 +1737,36 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       socket.off("edit_error", onEditError);
       socket.off("message_context", onMessageContext);
       socket.off("message_context_error", onMessageContextError);
+      socket.off("pinned_messages_list", onPinnedMessagesList);
+      socket.off("message_pinned", onMessagePinned);
+      socket.off("message_unpinned", onMessageUnpinned);
+      socket.off("receipts_updated", onReceiptsUpdated);
     };
   }, [historyLoaded, onLeave, roomId, token, username]);
+
+  // Intersection Observer for read receipts
+  useEffect(() => {
+    if (!messagesAreaRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const msgId = entry.target.getAttribute("data-msg-id");
+            if (msgId && !readReceipts[msgId]?.readBy?.includes(username)) {
+              socket.emit("message_read", { room: roomId, msgId, username });
+            }
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+
+    const msgElements = document.querySelectorAll(".msg-row");
+    msgElements.forEach(el => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, [messages, roomId, username, readReceipts]);
 
   useEffect(() => {
     const targetId = pendingScrollTargetRef.current;
@@ -1754,15 +1806,9 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       message: trimmed,
       sender: username,
       timestamp: new Date().toISOString(),
-      replyTo: replyingTo ? {
-        messageId: replyingTo.id,
-        snippet: replyingTo.snippet,
-        sender: replyingTo.sender
-      } : null
     });
     setMessage("");
     setShowEmoji(false);
-    cancelReply();
     inputRef.current?.focus();
   };
 
@@ -1871,7 +1917,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     }
 
     setSearchFocused(true);
-
     setSearchLoading(true);
 
     try {
@@ -1976,6 +2021,44 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
               {user.id === mySocketId ? <span className="you-tag">you</span> : null}
             </div>
           ))}
+        </div>
+
+        {/* Pinned messages section */}
+        <div className="pins-section">
+          <div className="pins-header" onClick={() => setPinsOpen(!pinsOpen)}>
+            <span>📌 Pinned Messages ({pinnedMessages.length}/5)</span>
+            <span className="pins-toggle">{pinsOpen ? "−" : "+"}</span>
+          </div>
+          {pinsOpen && (
+            <div className="pins-list">
+              {pinnedMessages.length === 0 ? (
+                <div className="pins-empty">No pinned messages yet.</div>
+              ) : (
+                pinnedMessages.map(msg => (
+                  <div
+                    key={msg.id}
+                    className="pin-item"
+                    onClick={() => {
+                      const node = messageRefs.current.get(msg.id);
+                      if (node) {
+                        node.scrollIntoView({ behavior: "smooth", block: "center" });
+                        node.classList.add("targeted");
+                        setTimeout(() => node.classList.remove("targeted"), 1500);
+                      } else {
+                        pendingScrollTargetRef.current = msg.id;
+                        socket.emit("load_message_context", { token, messageId: msg.id });
+                      }
+                    }}
+                  >
+                    <div className="pin-sender">{msg.sender}</div>
+                    <div className="pin-snippet">
+                      {msg.type === "text" ? msg.message.slice(0, 60) : "📷 Image"}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         <div className="sidebar-footer">
@@ -2141,6 +2224,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                     key={msg.id}
                     className={`msg-row ${isOwn ? "own" : ""}`}
                     ref={(node) => setMessageRef(msg.id, node)}
+                    data-msg-id={msg.id}
                   >
                     {!isOwn ? (
                       <div style={{ width: 30, flexShrink: 0 }}>
@@ -2200,25 +2284,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                             style={{ cursor: "pointer" }}
                             title="Right-click for actions or double-click to react"
                           >
-                            {msg.replyTo && msg.replyTo.messageId && (
-                              <div
-                                className="msg-quote"
-                                onClick={() => {
-                                  const quotedNode = messageRefs.current.get(msg.replyTo.messageId);
-                                  if (quotedNode) {
-                                    quotedNode.scrollIntoView({ behavior: "smooth", block: "center" });
-                                    quotedNode.classList.add("targeted");
-                                    setTimeout(() => quotedNode.classList.remove("targeted"), 1500);
-                                  } else {
-                                    pendingScrollTargetRef.current = msg.replyTo.messageId;
-                                    socket.emit("load_message_context", { token, messageId: msg.replyTo.messageId });
-                                  }
-                                }}
-                              >
-                                <span className="quote-sender">{msg.replyTo.sender}</span>
-                                <span className="quote-text">“{msg.replyTo.snippet}”</span>
-                              </div>
-                            )}
                             {msg.type === "image" ? (
                               <>
                                 <img
@@ -2268,6 +2333,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                       <div className="msg-time">
                         {formatTime(msg.timestamp)}
                         {msg.edited ? <span className="edited-tag">(edited)</span> : null}
+                        {isOwn && readReceipts[msg.id] && readReceipts[msg.id].count > 0 && (
+                          <div className="read-receipt" title={readReceipts[msg.id].readBy.join(", ")}>
+                            {readReceipts[msg.id].count === 1 ? "✓ Seen" : `✓ Seen by ${readReceipts[msg.id].count}`}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2290,15 +2360,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 </span>
               ))}
             </div>
-            <div className="context-menu-item" onClick={() => {
-              const targetMsg = messages.find(m => m.id === contextMenu.msgId);
-              if (targetMsg) {
-                startReply(targetMsg.id, targetMsg.sender, targetMsg.message);
-                closeContextMenu();
-              }
-            }}>
-              💬 Reply
-            </div>
             {contextMenu.sender === username ? (
               <>
                 <div className="context-menu-divider" />
@@ -2310,6 +2371,21 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 <div className="context-menu-item" onClick={deleteMessage}>
                   Delete message
                 </div>
+                {/* Pin / Unpin options */}
+                <div className="context-menu-item" onClick={() => {
+                  socket.emit("pin_message", { room: roomId, msgId: contextMenu.msgId, username });
+                  closeContextMenu();
+                }}>
+                  📌 Pin message
+                </div>
+                {pinnedMessages.some(m => m.id === contextMenu.msgId) && (
+                  <div className="context-menu-item" onClick={() => {
+                    socket.emit("unpin_message", { room: roomId, msgId: contextMenu.msgId, username });
+                    closeContextMenu();
+                  }}>
+                    📌 Unpin
+                  </div>
+                )}
               </>
             ) : null}
           </div>
@@ -2329,16 +2405,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         </div>
 
         <div className="input-bar" style={{ position: "relative" }}>
-          {replyingTo && (
-            <div className="reply-preview">
-              <div className="reply-preview-content">
-                <span className="reply-preview-label">Replying to {replyingTo.sender}</span>
-                <span className="reply-preview-snippet">“{replyingTo.snippet}”</span>
-              </div>
-              <button className="reply-preview-cancel" onClick={cancelReply}>×</button>
-            </div>
-          )}
-
           {imgUploading ? (
             <div className="uploading-indicator">
               <span className="spin-icon">⏳</span>

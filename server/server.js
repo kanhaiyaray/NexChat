@@ -67,6 +67,8 @@ const privateRoomSchema = new mongoose.Schema({
   token:     { type: String, required: true, unique: true },
   createdBy: { type: String, default: "anonymous" },
   createdAt: { type: Date,   default: Date.now },
+    pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }]
+
 });
 const PrivateRoom =
   mongoose.models.PrivateRoom || mongoose.model("PrivateRoom", privateRoomSchema);
@@ -580,6 +582,81 @@ io.on("connection", (socket) => {
 
   socket.on("typing_start", ({ room, username }) => {
     socket.to(room).emit("user_typing", { username, isTyping: true });
+  });
+   
+    // ─── Pin a message (max 5 per room) ──────────────────────────────────────────
+  socket.on("pin_message", async ({ room, msgId, username }) => {
+    if (!currentRoom || currentUser !== username) {
+      socket.emit("pin_error", { message: "Not authorized" });
+      return;
+    }
+
+    try {
+      const privateRoom = await PrivateRoom.findOne({ roomId: room });
+      if (!privateRoom) return;
+
+      // Limit check
+      if (privateRoom.pinnedMessages.length >= 5) {
+        socket.emit("pin_error", { message: "Maximum 5 pinned messages per room." });
+        return;
+      }
+
+      // Avoid duplicate pins
+      if (!privateRoom.pinnedMessages.includes(msgId)) {
+        privateRoom.pinnedMessages.push(msgId);
+        await privateRoom.save();
+
+        // Populate the full message objects to send back
+        const pinnedMsg = await Message.findById(msgId).lean();
+        io.to(room).emit("message_pinned", {
+          message: serializeMessage(pinnedMsg),
+          pinnedCount: privateRoom.pinnedMessages.length
+        });
+      }
+    } catch (err) {
+      console.error("Pin error:", err.message);
+      socket.emit("pin_error", { message: "Could not pin message." });
+    }
+  });
+
+  // ─── Unpin a message ─────────────────────────────────────────────────────────
+  socket.on("unpin_message", async ({ room, msgId, username }) => {
+    if (!currentRoom || currentUser !== username) {
+      socket.emit("pin_error", { message: "Not authorized" });
+      return;
+    }
+
+    try {
+      const privateRoom = await PrivateRoom.findOne({ roomId: room });
+      if (!privateRoom) return;
+
+      privateRoom.pinnedMessages = privateRoom.pinnedMessages.filter(id => id.toString() !== msgId);
+      await privateRoom.save();
+
+      io.to(room).emit("message_unpinned", {
+        msgId,
+        pinnedCount: privateRoom.pinnedMessages.length
+      });
+    } catch (err) {
+      console.error("Unpin error:", err.message);
+      socket.emit("pin_error", { message: "Could not unpin message." });
+    }
+  });
+
+  // ─── Get all pinned messages for a room (when user joins) ─────────────────────
+  socket.on("get_pinned_messages", async ({ room }) => {
+    try {
+      const privateRoom = await PrivateRoom.findOne({ roomId: room }).populate("pinnedMessages");
+      if (!privateRoom) {
+        socket.emit("pinned_messages_list", []);
+        return;
+      }
+      const pinned = privateRoom.pinnedMessages.map(serializeMessage);
+      socket.emit("pinned_messages_list", pinned);
+    } catch (err) {
+      console.error("Fetch pinned error:", err.message);
+      socket.emit("pinned_messages_list", []);
+    }
   });
 
   socket.on("typing_stop", ({ room }) => {
