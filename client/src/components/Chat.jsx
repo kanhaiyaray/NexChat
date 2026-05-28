@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 import { SignIn, SignOutButton, useUser } from "@clerk/clerk-react";
+import ProfileModal from "./ProfileModal";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:1000";
 const API_BASE = SOCKET_URL;
@@ -847,54 +848,44 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .spin-icon { display: inline-block; animation: spin 1s linear infinite; }
 
     .context-menu {
-  position: fixed;
-  padding: 8px;
-  border-radius: 12px;
-  animation: fadeUp .15s ease;
-  z-index: 1000;
-  min-width: 140px;
-  max-width: 180px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  box-shadow: 0 16px 40px rgba(0,0,0,.45);
-}
+      position: fixed;
+      padding: 8px;
+      border-radius: 12px;
+      animation: fadeUp .15s ease;
+      z-index: 1000;
+      min-width: 140px;
+      max-width: 180px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 16px 40px rgba(0,0,0,.45);
+    }
 
-/* Ensure menu items are properly spaced */
-.context-menu-item {
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-  transition: background 0.15s ease;
-}
-
-.context-menu-item:hover {
-  background: rgba(255,255,255,.08);
-}
-
-.context-menu-divider {
-  height: 1px;
-  margin: 6px 0;
-  background: var(--border);
-}
-
-.reaction-row {
-  display: flex;
-  gap: 8px;
-  padding: 4px;
-  justify-content: center;
-}
     .context-menu-item {
-      padding: 6px 12px;
+      padding: 8px 16px;
       border-radius: 8px;
       cursor: pointer;
       font-size: 13px;
       white-space: nowrap;
+      transition: background 0.15s ease;
     }
-    .context-menu-item:hover { background: rgba(255,255,255,.08); }
-    .context-menu-divider { height: 1px; margin: 6px 0; background: var(--border); }
-    .reaction-row { gap: 8px; padding: 4px; }
+
+    .context-menu-item:hover {
+      background: rgba(255,255,255,.08);
+    }
+
+    .context-menu-divider {
+      height: 1px;
+      margin: 6px 0;
+      background: var(--border);
+    }
+
+    .reaction-row {
+      display: flex;
+      gap: 8px;
+      padding: 4px;
+      justify-content: center;
+    }
+
     .message-edit-box {
       display: flex;
       flex-direction: column;
@@ -1183,6 +1174,269 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
       font-size: 10px;
       color: var(--cyan);
       cursor: help;
+    }
+
+    /* === Profile Modal Styles === */
+    .profile-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .profile-modal {
+      width: 480px;
+      max-width: calc(100vw - 32px);
+      max-height: 85vh;
+      overflow-y: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.5);
+      animation: fadeUp 0.2s ease;
+    }
+
+    .profile-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .profile-modal-header h3 {
+      font-family: "Syne", sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .profile-modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    .profile-modal-close:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+
+    .profile-modal-body {
+      padding: 24px;
+    }
+
+    .profile-avatar-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .profile-avatar-preview {
+      width: 100px;
+      height: 100px;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 2px solid var(--cyan);
+      box-shadow: 0 0 0 3px rgba(61, 214, 245, 0.1);
+    }
+
+    .profile-avatar-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .profile-avatar-initials {
+      font-size: 36px;
+      font-weight: 700;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .profile-upload-btn {
+      padding: 8px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    .profile-upload-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .profile-color-section {
+      margin-bottom: 20px;
+    }
+
+    .profile-color-section label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .profile-color-palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .profile-color-option {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    .profile-color-option.active {
+      border-color: white;
+      box-shadow: 0 0 0 2px var(--cyan);
+      transform: scale(1.05);
+    }
+
+    .profile-color-option:hover {
+      transform: scale(1.05);
+    }
+
+    .profile-field {
+      margin-bottom: 20px;
+    }
+
+    .profile-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .profile-input,
+    .profile-textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-family: "DM Sans", sans-serif;
+      font-size: 14px;
+      resize: vertical;
+    }
+
+    .profile-input:focus,
+    .profile-textarea:focus {
+      outline: none;
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(61, 214, 245, 0.1);
+    }
+
+    .profile-char-count {
+      display: block;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .profile-error {
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      background: rgba(244, 114, 182, 0.1);
+      border: 1px solid rgba(244, 114, 182, 0.2);
+      color: var(--rose);
+      font-size: 13px;
+    }
+
+    .profile-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .profile-cancel-btn,
+    .profile-save-btn {
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    .profile-cancel-btn {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+    }
+
+    .profile-cancel-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .profile-save-btn {
+      border: none;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      color: #070b14;
+    }
+
+    .profile-save-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(61, 214, 245, 0.3);
+    }
+
+    .profile-save-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .edit-profile-btn {
+      padding: 8px 16px;
+      margin-top: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--cyan);
+      font-size: 12px;
+      cursor: pointer;
+      transition: 0.15s;
+      width: 100%;
+    }
+
+    .edit-profile-btn:hover {
+      background: rgba(61, 214, 245, 0.1);
+      border-color: var(--cyan);
     }
   `;
   document.head.appendChild(styleSheet);
@@ -1477,6 +1731,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [pinsOpen, setPinsOpen] = useState(true);
   const [readReceipts, setReadReceipts] = useState({});
 
+  // Profile state
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+  const [userProfilesCache, setUserProfilesCache] = useState({});
+
   const endRef = useRef(null);
   const fileRef = useRef(null);
   const inputRef = useRef(null);
@@ -1499,6 +1758,52 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     setToastType(type);
     toastTimer.current = setTimeout(() => setToast(""), 3000);
   };
+
+  // Fetch user profile with auto-sync fallback
+  const fetchUserProfile = async (clerkId) => {
+  if (!clerkId) {
+    console.log("No clerkId provided");
+    return null;
+  }
+  
+  try {
+    // ✅ FIXED: Using full URL with API_BASE
+    const url = `${API_BASE}/api/user/profile/${clerkId}`;
+    console.log("Fetching from:", url);
+    const response = await fetch(url);
+    
+    if (response.status === 404) {
+      // ✅ FIXED: Using full URL with API_BASE for sync too
+      const syncUrl = `${API_BASE}/api/user/sync/${clerkId}`;
+      const syncResponse = await fetch(syncUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username,
+          email: clerkUser?.primaryEmailAddress?.emailAddress,
+          avatarUrl: clerkUser?.imageUrl
+        })
+      });
+      
+      if (syncResponse.ok) {
+        const syncData = await syncResponse.json();
+        setUserProfile(syncData.profile);
+        return syncData.profile;
+      }
+      return null;
+    }
+    
+    const data = await response.json();
+    if (response.ok) {
+      setUserProfile(data);
+      return data;
+    }
+    return null;
+  } catch (err) {
+    console.error("Failed to fetch profile:", err);
+    return null;
+  }
+};
 
   useEffect(() => {
     return () => {
@@ -1543,33 +1848,48 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  // Load profile on mount
+  useEffect(() => {
+    if (clerkUser?.id) {
+      fetchUserProfile(clerkUser.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clerkUser?.id]);
+
+  // Socket listener for profile updates
+  useEffect(() => {
+    const onProfileUpdated = (updatedProfile) => {
+      setUserProfilesCache(prev => ({
+        ...prev,
+        [updatedProfile.clerkId]: updatedProfile
+      }));
+      if (updatedProfile.clerkId === clerkUser?.id) {
+        setUserProfile(updatedProfile);
+      }
+    };
+
+    socket.on("user_profile_updated", onProfileUpdated);
+    return () => socket.off("user_profile_updated", onProfileUpdated);
+  }, [clerkUser?.id]);
+
   const handleContextMenu = (event, msgId, sender) => {
     event.preventDefault();
     const targetMessage = messages.find((msg) => msg.id === msgId);
 
-    // Get viewport dimensions
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-
-    // Approximate menu dimensions
     const menuWidth = 160;
     const menuHeight = 200;
 
-    // Calculate position with boundary checking
     let x = event.clientX;
     let y = event.clientY;
 
-    // Check right edge
     if (x + menuWidth > viewportWidth) {
       x = viewportWidth - menuWidth - 10;
     }
-
-    // Check bottom edge
     if (y + menuHeight > viewportHeight) {
       y = viewportHeight - menuHeight - 10;
     }
-
-    // Ensure not going off left or top
     x = Math.max(10, x);
     y = Math.max(10, y);
 
@@ -1621,7 +1941,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   }, [contextMenu.visible]);
 
   useEffect(() => {
-    socket.emit("join_room", { username, token });
+    socket.emit("join_room", { username, token, clerkId: clerkUser?.id });
     socket.emit("get_pinned_messages", { room: roomId });
 
     const onJoinError = ({ message: errorMessage }) => {
@@ -1635,7 +1955,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       const sorted = [...history].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
       setMessages(sorted);
       setReactions(buildReactionsMap(sorted));
-      // Populate read receipts
       const receiptsMap = {};
       sorted.forEach(msg => {
         if (msg.readBy) receiptsMap[msg.id] = { readBy: msg.readBy, count: msg.readCount };
@@ -1740,7 +2059,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       showToast(errorMessage || "Could not load the selected message.", "error");
     };
 
-    // Pin listeners
     const onPinnedMessagesList = (pinnedList) => {
       setPinnedMessages(pinnedList);
     };
@@ -1753,7 +2071,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       showToast(`Message unpinned (${pinnedCount}/5)`);
     };
 
-    // Read receipts listener
     const onReceiptsUpdated = ({ msgId, readBy, count }) => {
       setReadReceipts(prev => ({
         ...prev,
@@ -1800,9 +2117,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       socket.off("message_unpinned", onMessageUnpinned);
       socket.off("receipts_updated", onReceiptsUpdated);
     };
-  }, [historyLoaded, onLeave, roomId, token, username]);
+  }, [historyLoaded, onLeave, roomId, token, username, clerkUser?.id]);
 
-  // Intersection Observer for read receipts
   useEffect(() => {
     if (!messagesAreaRef.current) return;
 
@@ -2068,17 +2384,23 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
         <div className="users-section">
           <div className="section-label">Members - {users.length}</div>
-          {users.map((user, index) => (
-            <div key={user.id} className="user-item" style={{ animationDelay: `${index * 0.05}s` }}>
-              <div className="online-ring">
-                <div className="avatar" style={getAvatarStyle(user.username)}>
-                  {initials(user.username)}
+          {users.map((user, index) => {
+            const profile = userProfilesCache[user.clerkId];
+            return (
+              <div key={user.id} className="user-item" style={{ animationDelay: `${index * 0.05}s` }}>
+                <div className="online-ring">
+                  <div
+                    className="avatar"
+                    style={profile?.avatarUrl ? { backgroundImage: `url(${profile.avatarUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : { background: profile?.avatarColor ? `${profile.avatarColor}40` : "rgba(61,214,245,.25)", color: profile?.avatarColor || "#3dd6f5" }}
+                  >
+                    {!profile?.avatarUrl && initials(user.username)}
+                  </div>
                 </div>
+                <span className="user-name">{user.username}</span>
+                {user.id === mySocketId ? <span className="you-tag">you</span> : null}
               </div>
-              <span className="user-name">{user.username}</span>
-              {user.id === mySocketId ? <span className="you-tag">you</span> : null}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="pins-section">
@@ -2119,19 +2441,37 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         </div>
 
         <div className="sidebar-footer">
-          <div className="my-info">
-            {clerkUser?.imageUrl ? (
-              <img src={clerkUser.imageUrl} alt="" style={{ width: 38, height: 38, borderRadius: 11, objectFit: "cover" }} />
+          <div className="my-info" style={{ cursor: "pointer" }} onClick={() => setProfileModalOpen(true)}>
+            {userProfile?.avatarUrl ? (
+              <img
+                src={userProfile.avatarUrl}
+                alt=""
+                style={{ width: 38, height: 38, borderRadius: 11, objectFit: "cover" }}
+              />
             ) : (
-              <div className="avatar" style={{ ...getAvatarStyle(username), width: 38, height: 38, borderRadius: 11, fontSize: 14 }}>
+              <div
+                className="avatar"
+                style={{
+                  ...getAvatarStyle(username),
+                  width: 38,
+                  height: 38,
+                  borderRadius: 11,
+                  fontSize: 14,
+                  background: userProfile?.avatarColor ? `${userProfile.avatarColor}40` : getAvatarStyle(username).background,
+                  color: userProfile?.avatarColor || getAvatarStyle(username).color
+                }}
+              >
                 {initials(username)}
               </div>
             )}
             <div>
               <div className="my-name">{username}</div>
-              <div className="my-status">● Active</div>
+              <div className="my-status">{userProfile?.status || "● Active"}</div>
             </div>
           </div>
+          <button className="edit-profile-btn" onClick={() => setProfileModalOpen(true)}>
+            ✎ Edit Profile
+          </button>
           <SignOutButton>
             <button className="sidebar-signout">Sign out</button>
           </SignOutButton>
@@ -2274,7 +2614,6 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 const msgReactions = reactions[msg.id] || {};
                 const isTargeted = highlightedMessageId === msg.id;
                 const isEditingThisMessage = editingMessageId === msg.id;
-                const canEditThisMessage = isEditableMessage(msg, username);
 
                 return (
                   <div
@@ -2538,6 +2877,20 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       ) : null}
 
       {toast ? <div className={`toast ${toastType === "error" ? "error" : ""}`}>{toast}</div> : null}
+
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        clerkUser={clerkUser}
+        currentProfile={userProfile}
+        onProfileUpdate={(updatedProfile) => {
+          setUserProfile(updatedProfile);
+          setUserProfilesCache(prev => ({
+            ...prev,
+            [clerkUser.id]: updatedProfile
+          }));
+        }}
+      />
     </div>
   );
 };

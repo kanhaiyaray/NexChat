@@ -1,18 +1,19 @@
-import express      from "express";
-import http         from "http";
-import { Server }   from "socket.io";
-import cors         from "cors";
-import dotenv       from "dotenv";
-import mongoose     from "mongoose";
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import dotenv from "dotenv";
+import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
 import { randomUUID } from "crypto";
+import multer from "multer";
 
 dotenv.config();
 
 // ─── Cloudinary ───────────────────────────────────────────────────────────────
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
@@ -41,19 +42,19 @@ const connectDB = async () => {
 
 // ─── Message Schema (with replyTo) ───────────────────────────────────────────
 const messageSchema = new mongoose.Schema({
-  room:      { type: String, required: true, index: true },
-  sender:    { type: String, required: true },
-  message:   { type: String, default: "" },
-  imageUrl:  { type: String, default: "" },
-  type:      { type: String, enum: ["text", "image"], default: "text" },
+  room: { type: String, required: true, index: true },
+  sender: { type: String, required: true },
+  message: { type: String, default: "" },
+  imageUrl: { type: String, default: "" },
+  type: { type: String, enum: ["text", "image"], default: "text" },
   timestamp: { type: Date, default: Date.now, index: true },
-  edited:    { type: Boolean, default: false },
-  editedAt:  { type: Date, default: null },
+  edited: { type: Boolean, default: false },
+  editedAt: { type: Date, default: null },
   reactions: { type: Map, of: Number, default: {} },
-  replyTo:   {
+  replyTo: {
     messageId: { type: String, default: null },
-    snippet:   { type: String, default: null },
-    sender:    { type: String, default: null }
+    snippet: { type: String, default: null },
+    sender: { type: String, default: null }
   }
 }, { timestamps: false });
 
@@ -63,24 +64,72 @@ const Message = mongoose.models.Message || mongoose.model("Message", messageSche
 
 // ─── Read Receipt Schema ──────────────────────────────────────────────────────
 const readReceiptSchema = new mongoose.Schema({
-  room:      { type: String, required: true, index: true },
+  room: { type: String, required: true, index: true },
   messageId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
-  userId:    { type: String, required: true },
-  readAt:    { type: Date, default: Date.now }
+  userId: { type: String, required: true },
+  readAt: { type: Date, default: Date.now }
 });
 readReceiptSchema.index({ room: 1, messageId: 1, userId: 1 }, { unique: true });
 const ReadReceipt = mongoose.models.ReadReceipt || mongoose.model("ReadReceipt", readReceiptSchema);
 
 // ─── PrivateRoom Schema (with pinnedMessages) ─────────────────────────────────
 const privateRoomSchema = new mongoose.Schema({
-  roomId:    { type: String, required: true, unique: true },
-  token:     { type: String, required: true, unique: true },
+  roomId: { type: String, required: true, unique: true },
+  token: { type: String, required: true, unique: true },
   createdBy: { type: String, default: "anonymous" },
-  createdAt: { type: Date,   default: Date.now },
+  createdAt: { type: Date, default: Date.now },
   pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }]
 });
-const PrivateRoom =
-  mongoose.models.PrivateRoom || mongoose.model("PrivateRoom", privateRoomSchema);
+const PrivateRoom = mongoose.models.PrivateRoom || mongoose.model("PrivateRoom", privateRoomSchema);
+
+// ─── UserProfile Schema ──────────────────────────────────────────────────────
+const userProfileSchema = new mongoose.Schema({
+  clerkId: { type: String, required: true, unique: true, index: true },
+  username: { type: String, required: true },
+  email: { type: String, default: "" },
+  avatarUrl: { type: String, default: "" }, // Cloudinary URL for custom avatar
+  avatarColor: { type: String, default: "" },  // Store selected color theme
+  bio: { type: String, default: "", maxlength: 160 },
+  status: { type: String, default: "🌟 Available", maxlength: 40 },
+  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now }
+});
+
+userProfileSchema.index({ username: "text" });
+const UserProfile = mongoose.models.UserProfile || mongoose.model("UserProfile", userProfileSchema);
+
+// ─── Helper functions for users ──────────────────────────────────────────────
+async function getUserProfile(clerkId) {
+  if (mongoose.connection.readyState !== 1) return null;
+  return await UserProfile.findOne({ clerkId }).lean();
+}
+
+async function getOrCreateUserProfile(clerkId, username, email) {
+  if (mongoose.connection.readyState !== 1) return null;
+
+  let profile = await UserProfile.findOne({ clerkId });
+  if (!profile) {
+    // Assign a random avatar color from a predefined palette
+    const colorPalette = [
+      "#3dd6f5", "#a78bfa", "#f472b6", "#34d399", "#fbbf24", "#f87171",
+      "#60a5fa", "#c084fc", "#fb923c", "#4ade80"
+    ];
+    const randomColor = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+
+    profile = await UserProfile.create({
+      clerkId,
+      username,
+      email: email || "",
+      avatarColor: randomColor,
+      bio: "",
+      status: "🌟 Available"
+    });
+  } else if (profile.username !== username) {
+    profile.username = username;
+    await profile.save();
+  }
+  return profile;
+}
 
 // ─── In‑memory token → roomId map ────────────────────────────────────────────
 const tokenRoomMap = new Map();
@@ -158,25 +207,38 @@ async function fetchMessageContext(roomId, messageId, windowSize = 15) {
 }
 
 // ─── Express + Socket.IO ──────────────────────────────────────────────────────
-const app    = express();
+const app = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
+
+// Allow multiple origins for development
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  process.env.CLIENT_ORIGIN
+].filter(Boolean);
+
+const io = new Server(server, {
   cors: {
-    origin:  process.env.CLIENT_ORIGIN || "http://localhost:5173",
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
+    credentials: true,
   },
   maxHttpBufferSize: 10 * 1024 * 1024,
 });
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+}));
 app.use(express.json());
 
 app.get("/health", (_, res) => res.json({ status: "ok", time: new Date() }));
 
 app.post("/api/create-chat", async (req, res) => {
   try {
-    const roomId    = `room_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
-    const token     = randomUUID().replace(/-/g, "");
+    const roomId = `room_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+    const token = randomUUID().replace(/-/g, "");
     const createdBy = req.body?.userId || "anonymous";
 
     tokenRoomMap.set(token, roomId);
@@ -187,7 +249,7 @@ app.post("/api/create-chat", async (req, res) => {
       });
     }
 
-    const origin     = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+    const origin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
     const inviteLink = `${origin}?token=${token}`;
 
     console.log(`🔒 New private room created: ${roomId}`);
@@ -275,17 +337,221 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
+// ─── User Profile Endpoints ───────────────────────────────────────────────────
+
+// Webhook endpoint for Clerk user events
+app.post("/api/webhook/clerk", express.json(), async (req, res) => {
+  try {
+    const { type, data } = req.body;
+
+    if (type === "user.created" || type === "user.updated") {
+      const clerkId = data.id;
+      const username = data.username || data.email_addresses?.[0]?.email_address?.split("@")[0] || "User";
+      const email = data.email_addresses?.[0]?.email_address || "";
+
+      await getOrCreateUserProfile(clerkId, username, email);
+      console.log(`✅ User profile synced: ${username} (${clerkId})`);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Webhook error:", err.message);
+    res.status(500).json({ error: "Webhook processing failed" });
+  }
+});
+
+// Get user profile endpoint
+app.get("/api/user/profile/:clerkId", async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    if (!clerkId) {
+      return res.status(400).json({ error: "clerkId required" });
+    }
+
+    const profile = await getUserProfile(clerkId);
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    res.json(profile);
+  } catch (err) {
+    console.error("Get profile error:", err.message);
+    res.status(500).json({ error: "Failed to fetch profile" });
+  }
+});
+
+// Configure multer for avatar uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only images allowed"), false);
+    }
+  }
+});
+
+// Update user profile endpoint (with avatar upload)
+app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    const { bio, status, avatarColor } = req.body;
+
+    if (!clerkId) {
+      return res.status(400).json({ error: "clerkId required" });
+    }
+
+    let avatarUrl = null;
+
+    // Upload new avatar if provided
+    if (req.file) {
+      if (!process.env.CLOUDINARY_CLOUD_NAME) {
+        return res.status(503).json({ error: "Avatar upload not configured" });
+      }
+
+      const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+      const uploadResult = await cloudinary.uploader.upload(base64Image, {
+        folder: "nexchat_avatars",
+        transformation: [{ width: 200, height: 200, crop: "fill", gravity: "face" }]
+      });
+      avatarUrl = uploadResult.secure_url;
+    }
+
+    const updateData = {};
+    if (bio !== undefined) updateData.bio = bio?.slice(0, 160);
+    if (status !== undefined) updateData.status = status?.slice(0, 40);
+    if (avatarColor !== undefined) updateData.avatarColor = avatarColor;
+    if (avatarUrl !== null) updateData.avatarUrl = avatarUrl;
+    updateData.updatedAt = new Date();
+
+    const profile = await UserProfile.findOneAndUpdate(
+      { clerkId },
+      updateData,
+      { new: true, upsert: true }
+    );
+
+    // Notify all rooms that user profile changed
+    const userUpdate = {
+      clerkId,
+      username: profile.username,
+      avatarUrl: profile.avatarUrl,
+      avatarColor: profile.avatarColor,
+      status: profile.status,
+      bio: profile.bio
+    };
+
+    // Broadcast to all socket rooms this user is in
+    for (const [roomId, users] of Object.entries(rooms)) {
+      const userInRoom = users.some(u => u.username === profile.username);
+      if (userInRoom) {
+        io.to(roomId).emit("user_profile_updated", userUpdate);
+      }
+    }
+
+    res.json({ success: true, profile });
+  } catch (err) {
+    console.error("Update profile error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to update profile" });
+  }
+});
+
+// Batch get user profiles
+app.post("/api/user/profiles/batch", express.json(), async (req, res) => {
+  try {
+    const { clerkIds } = req.body;
+    if (!clerkIds || !Array.isArray(clerkIds)) {
+      return res.status(400).json({ error: "clerkIds array required" });
+    }
+
+    const profiles = await UserProfile.find({ clerkId: { $in: clerkIds } }).lean();
+    const profileMap = {};
+    profiles.forEach(p => {
+      profileMap[p.clerkId] = {
+        avatarUrl: p.avatarUrl,
+        avatarColor: p.avatarColor,
+        bio: p.bio,
+        status: p.status,
+        username: p.username
+      };
+    });
+
+    res.json(profileMap);
+  } catch (err) {
+    console.error("Batch profiles error:", err.message);
+    res.status(500).json({ error: "Failed to fetch profiles" });
+  }
+});
+
+// ─── Manual Sync Endpoint (for frontend to sync user data) ───────────────────
+app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    const { username, email, avatarUrl } = req.body;
+
+    if (!clerkId || !username) {
+      return res.status(400).json({ error: "clerkId and username required" });
+    }
+
+    let profile = await UserProfile.findOne({ clerkId });
+
+    if (!profile) {
+      // Create new profile with random color
+      const colorPalette = [
+        "#3dd6f5", "#a78bfa", "#f472b6", "#34d399", "#fbbf24", "#f87171",
+        "#60a5fa", "#c084fc", "#fb923c", "#4ade80"
+      ];
+      const randomColor = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+
+      profile = await UserProfile.create({
+        clerkId,
+        username,
+        email: email || "",
+        avatarUrl: avatarUrl || "",
+        avatarColor: randomColor,
+        bio: "",
+        status: "🌟 Available"
+      });
+    } else {
+      // Update existing profile
+      let needsUpdate = false;
+      if (profile.username !== username) {
+        profile.username = username;
+        needsUpdate = true;
+      }
+      if (email && profile.email !== email) {
+        profile.email = email;
+        needsUpdate = true;
+      }
+      if (avatarUrl && !profile.avatarUrl) {
+        profile.avatarUrl = avatarUrl;
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        profile.updatedAt = new Date();
+        await profile.save();
+      }
+    }
+
+    res.json({ success: true, profile });
+  } catch (err) {
+    console.error("Manual sync error:", err.message);
+    res.status(500).json({ error: "Failed to sync user" });
+  }
+});
+
 // ─── In‑memory room user tracker (with duplicate prevention by username) ─────
 const rooms = {};
 
 const getUsers = (room) => rooms[room] || [];
 
-const addUser = (room, id, username) => {
+const addUser = (room, id, username, clerkId) => {
   if (!rooms[room]) rooms[room] = [];
   // Remove any existing entry with the same username (prevents duplicates)
   rooms[room] = rooms[room].filter(u => u.username !== username);
-  // Add the new socket
-  rooms[room].push({ id, username });
+  // Add the new socket with clerkId
+  rooms[room].push({ id, username, clerkId });
 };
 
 const removeUser = (room, id) => {
@@ -301,7 +567,7 @@ io.on("connection", (socket) => {
   let currentRoom = null;
   let currentUser = null;
 
-  socket.on("join_room", async ({ username, token }) => {
+  socket.on("join_room", async ({ username, token, clerkId }) => {
     if (!token) {
       socket.emit("join_error", {
         message: "An invite token is required. Please use a valid invite link.",
@@ -335,10 +601,15 @@ io.on("connection", (socket) => {
     currentUser = username;
 
     socket.join(actualRoom);
-    addUser(actualRoom, socket.id, username);
+    addUser(actualRoom, socket.id, username, clerkId);
     io.to(actualRoom).emit("update_users", getUsers(actualRoom));
 
     socket.emit("room_joined", { roomId: actualRoom });
+
+    // Sync user profile on join
+    if (clerkId && mongoose.connection.readyState === 1) {
+      await getOrCreateUserProfile(clerkId, username, "");
+    }
 
     try {
       if (mongoose.connection.readyState === 1) {
@@ -369,14 +640,14 @@ io.on("connection", (socket) => {
     if (mongoose.connection.readyState === 1) {
       try {
         savedMsg = await new Message({
-          room:      data.room,
-          sender:    data.sender,
-          message:   data.message,
-          type:      "text",
+          room: data.room,
+          sender: data.sender,
+          message: data.message,
+          type: "text",
           timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
-          edited:    false,
-          editedAt:  null,
-          replyTo:   data.replyTo || null
+          edited: false,
+          editedAt: null,
+          replyTo: data.replyTo || null
         }).save();
         // Auto-read by sender
         await ReadReceipt.findOneAndUpdate(
@@ -422,8 +693,8 @@ io.on("connection", (socket) => {
 
     try {
       const uploaded = await cloudinary.uploader.upload(imageBase64, {
-        folder:         "nexchat",
-        resource_type:  "image",
+        folder: "nexchat",
+        resource_type: "image",
         transformation: [{ quality: "auto", fetch_format: "auto" }],
       });
 
@@ -431,11 +702,11 @@ io.on("connection", (socket) => {
       if (mongoose.connection.readyState === 1) {
         savedMsg = await new Message({
           room, sender,
-          imageUrl:  uploaded.secure_url,
-          type:      "image",
+          imageUrl: uploaded.secure_url,
+          type: "image",
           timestamp: timestamp ? new Date(timestamp) : new Date(),
-          edited:    false,
-          editedAt:  null,
+          edited: false,
+          editedAt: null,
         }).save();
       }
 
