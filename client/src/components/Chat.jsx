@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 import { SignIn, SignOutButton, useUser } from "@clerk/clerk-react";
 import ProfileModal from "./ProfileModal";
+import VoiceRecorder from "./VoiceRecorder";
+import VoicePlayer from "./VoicePlayer";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:1000";
 const API_BASE = SOCKET_URL;
@@ -1438,6 +1440,150 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
       background: rgba(61, 214, 245, 0.1);
       border-color: var(--cyan);
     }
+
+    /* === Voice Recorder Styles === */
+    .voice-recorder {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .recording-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(61, 214, 245, 0.1);
+      padding: 6px 12px;
+      border-radius: 40px;
+      border: 1px solid rgba(61, 214, 245, 0.2);
+    }
+
+    .stop-recording {
+      width: 34px;
+      height: 34px;
+      background: rgba(244, 114, 182, 0.2);
+      color: #f472b6;
+    }
+
+    .recording-timer {
+      font-family: monospace;
+      font-size: 14px;
+      color: #f472b6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .recording-dot {
+      width: 10px;
+      height: 10px;
+      background: #f472b6;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    .waveform-animation {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 24px;
+    }
+
+    .waveform-animation span {
+      width: 3px;
+      background: #3dd6f5;
+      border-radius: 2px;
+      animation: wave 0.8s ease-in-out infinite;
+    }
+
+    .waveform-animation span:nth-child(1) { height: 8px; animation-delay: 0s; }
+    .waveform-animation span:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+    .waveform-animation span:nth-child(3) { height: 12px; animation-delay: 0.2s; }
+    .waveform-animation span:nth-child(4) { height: 20px; animation-delay: 0.3s; }
+
+    @keyframes wave {
+      0%, 100% { transform: scaleY(0.5); }
+      50% { transform: scaleY(1); }
+    }
+
+    /* Voice Player Styles */
+    .voice-player {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 8px 14px;
+      border-radius: 40px;
+      min-width: 200px;
+    }
+
+    .voice-play-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(61, 214, 245, 0.2);
+      color: #3dd6f5;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .voice-play-btn:hover {
+      background: rgba(61, 214, 245, 0.4);
+      transform: scale(1.05);
+    }
+
+    .voice-progress-container {
+      flex: 1;
+      position: relative;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .voice-progress {
+      position: absolute;
+      width: 100%;
+      height: 4px;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 2;
+    }
+
+    .voice-progress-fill {
+      position: absolute;
+      height: 4px;
+      background: linear-gradient(90deg, #3dd6f5, #a78bfa);
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .voice-time {
+      font-size: 11px;
+      color: #64748b;
+      font-family: monospace;
+      min-width: 65px;
+    }
+
+    @media (max-width: 480px) {
+      .voice-player {
+        min-width: 160px;
+        padding: 6px 10px;
+      }
+      .voice-time {
+        font-size: 10px;
+        min-width: 55px;
+      }
+    }
   `;
   document.head.appendChild(styleSheet);
 }
@@ -1709,6 +1855,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState("info");
   const [imgUploading, setImgUploading] = useState(false);
+  const [voiceUploading, setVoiceUploading] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState("");
   const [editingDraft, setEditingDraft] = useState("");
   const [editSaving, setEditSaving] = useState(false);
@@ -1940,6 +2087,17 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     return () => document.removeEventListener("click", handleClick);
   }, [contextMenu.visible]);
 
+  const sendVoice = async (audioBase64, duration) => {
+    setVoiceUploading(true);
+    socket.emit("send_voice", {
+      room: roomId,
+      audioBase64: audioBase64,
+      sender: username,
+      timestamp: new Date().toISOString(),
+      duration: duration,
+    });
+  };
+
   useEffect(() => {
     socket.emit("join_room", { username, token, clerkId: clerkUser?.id });
     socket.emit("get_pinned_messages", { room: roomId });
@@ -1991,6 +2149,16 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       setImgUploading(false);
     };
 
+    const onReceiveVoice = (data) => {
+      if (!historyLoaded) {
+        setMessageBuffer((prev) => [...prev, data]);
+        return;
+      }
+      shouldAutoScrollRef.current = true;
+      setMessages((prev) => (prev.some((msg) => msg.id === data.id) ? prev : [...prev, data]));
+      setVoiceUploading(false);
+    };
+
     const onUpdateUsers = (data) => setUsers(data);
     const onUserTyping = ({ username: typingUser, isTyping }) => setTyping(isTyping ? typingUser : "");
 
@@ -2010,6 +2178,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     const onImageError = ({ message: errorMessage }) => {
       setImgUploading(false);
       showToast(errorMessage || "Image upload failed.", "error");
+    };
+
+    const onVoiceError = ({ message: errorMessage }) => {
+      setVoiceUploading(false);
+      showToast(errorMessage || "Voice upload failed.", "error");
     };
 
     const onMessageDeleted = ({ msgId }) => {
@@ -2082,10 +2255,12 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     socket.on("chat_history", onChatHistory);
     socket.on("receive_message", onReceiveMessage);
     socket.on("receive_image", onReceiveImage);
+    socket.on("receive_voice", onReceiveVoice);
     socket.on("update_users", onUpdateUsers);
     socket.on("user_typing", onUserTyping);
     socket.on("update_reaction", onUpdateReaction);
     socket.on("image_error", onImageError);
+    socket.on("voice_error", onVoiceError);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("delete_error", onDeleteError);
     socket.on("message_edited", onMessageEdited);
@@ -2102,10 +2277,12 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       socket.off("chat_history", onChatHistory);
       socket.off("receive_message", onReceiveMessage);
       socket.off("receive_image", onReceiveImage);
+      socket.off("receive_voice", onReceiveVoice);
       socket.off("update_users", onUpdateUsers);
       socket.off("user_typing", onUserTyping);
       socket.off("update_reaction", onUpdateReaction);
       socket.off("image_error", onImageError);
+      socket.off("voice_error", onVoiceError);
       socket.off("message_deleted", onMessageDeleted);
       socket.off("delete_error", onDeleteError);
       socket.off("message_edited", onMessageEdited);
@@ -2431,7 +2608,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                   >
                     <div className="pin-sender">{msg.sender}</div>
                     <div className="pin-snippet">
-                      {msg.type === "text" ? msg.message.slice(0, 60) : "📷 Image"}
+                      {msg.type === "text" ? msg.message.slice(0, 60) : msg.type === "image" ? "📷 Image" : "🎤 Voice"}
                     </div>
                   </div>
                 ))
@@ -2696,6 +2873,8 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                                 />
                                 <span style={{ display: "none", color: "var(--rose)", fontSize: 12 }}>[Image failed to load]</span>
                               </>
+                            ) : msg.type === "voice" ? (
+                              <VoicePlayer audioUrl={msg.voiceUrl} duration={msg.voiceDuration} />
                             ) : (
                               activeSearchTerm && isTargeted
                                 ? highlightText(msg.message, activeSearchTerm, true)
@@ -2814,6 +2993,13 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
             </div>
           ) : null}
 
+          {voiceUploading ? (
+            <div className="uploading-indicator">
+              <span className="spin-icon">⏳</span>
+              Uploading voice message...
+            </div>
+          ) : null}
+
           {imagePreview && !imgUploading ? (
             <div className="image-preview">
               <img className="preview-thumb" src={imagePreview} alt="preview" />
@@ -2850,6 +3036,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
               }}
               style={{ height: "42px", lineHeight: "18px", paddingTop: "12px" }}
             />
+            <VoiceRecorder onSend={sendVoice} disabled={voiceUploading} />
             <button className="icon-btn" type="button" onClick={() => setShowEmoji((current) => !current)} title="Emoji">
               😊
             </button>

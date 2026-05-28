@@ -40,13 +40,15 @@ const connectDB = async () => {
   }
 };
 
-// ─── Message Schema (with replyTo) ───────────────────────────────────────────
+// ─── Message Schema (with replyTo and voice support) ───────────────────────────
 const messageSchema = new mongoose.Schema({
   room: { type: String, required: true, index: true },
   sender: { type: String, required: true },
   message: { type: String, default: "" },
   imageUrl: { type: String, default: "" },
-  type: { type: String, enum: ["text", "image"], default: "text" },
+  voiceUrl: { type: String, default: "" },
+  voiceDuration: { type: Number, default: null },
+  type: { type: String, enum: ["text", "image", "voice"], default: "text" },
   timestamp: { type: Date, default: Date.now, index: true },
   edited: { type: Boolean, default: false },
   editedAt: { type: Date, default: null },
@@ -87,8 +89,8 @@ const userProfileSchema = new mongoose.Schema({
   clerkId: { type: String, required: true, unique: true, index: true },
   username: { type: String, required: true },
   email: { type: String, default: "" },
-  avatarUrl: { type: String, default: "" }, // Cloudinary URL for custom avatar
-  avatarColor: { type: String, default: "" },  // Store selected color theme
+  avatarUrl: { type: String, default: "" },
+  avatarColor: { type: String, default: "" },
   bio: { type: String, default: "", maxlength: 160 },
   status: { type: String, default: "🌟 Available", maxlength: 40 },
   updatedAt: { type: Date, default: Date.now },
@@ -109,7 +111,6 @@ async function getOrCreateUserProfile(clerkId, username, email) {
 
   let profile = await UserProfile.findOne({ clerkId });
   if (!profile) {
-    // Assign a random avatar color from a predefined palette
     const colorPalette = [
       "#3dd6f5", "#a78bfa", "#f472b6", "#34d399", "#fbbf24", "#f87171",
       "#60a5fa", "#c084fc", "#fb923c", "#4ade80"
@@ -210,7 +211,6 @@ async function fetchMessageContext(roomId, messageId, windowSize = 15) {
 const app = express();
 const server = http.createServer(app);
 
-// Allow multiple origins for development
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -338,8 +338,6 @@ app.get("/api/search", async (req, res) => {
 });
 
 // ─── User Profile Endpoints ───────────────────────────────────────────────────
-
-// Webhook endpoint for Clerk user events
 app.post("/api/webhook/clerk", express.json(), async (req, res) => {
   try {
     const { type, data } = req.body;
@@ -360,7 +358,6 @@ app.post("/api/webhook/clerk", express.json(), async (req, res) => {
   }
 });
 
-// Get user profile endpoint
 app.get("/api/user/profile/:clerkId", async (req, res) => {
   try {
     const { clerkId } = req.params;
@@ -380,10 +377,9 @@ app.get("/api/user/profile/:clerkId", async (req, res) => {
   }
 });
 
-// Configure multer for avatar uploads
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
       cb(null, true);
@@ -393,7 +389,6 @@ const upload = multer({
   }
 });
 
-// Update user profile endpoint (with avatar upload)
 app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res) => {
   try {
     const { clerkId } = req.params;
@@ -405,7 +400,6 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
 
     let avatarUrl = null;
 
-    // Upload new avatar if provided
     if (req.file) {
       if (!process.env.CLOUDINARY_CLOUD_NAME) {
         return res.status(503).json({ error: "Avatar upload not configured" });
@@ -432,7 +426,6 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
       { new: true, upsert: true }
     );
 
-    // Notify all rooms that user profile changed
     const userUpdate = {
       clerkId,
       username: profile.username,
@@ -442,7 +435,6 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
       bio: profile.bio
     };
 
-    // Broadcast to all socket rooms this user is in
     for (const [roomId, users] of Object.entries(rooms)) {
       const userInRoom = users.some(u => u.username === profile.username);
       if (userInRoom) {
@@ -457,7 +449,6 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
   }
 });
 
-// Batch get user profiles
 app.post("/api/user/profiles/batch", express.json(), async (req, res) => {
   try {
     const { clerkIds } = req.body;
@@ -484,7 +475,6 @@ app.post("/api/user/profiles/batch", express.json(), async (req, res) => {
   }
 });
 
-// ─── Manual Sync Endpoint (for frontend to sync user data) ───────────────────
 app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
   try {
     const { clerkId } = req.params;
@@ -497,7 +487,6 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
     let profile = await UserProfile.findOne({ clerkId });
 
     if (!profile) {
-      // Create new profile with random color
       const colorPalette = [
         "#3dd6f5", "#a78bfa", "#f472b6", "#34d399", "#fbbf24", "#f87171",
         "#60a5fa", "#c084fc", "#fb923c", "#4ade80"
@@ -514,7 +503,6 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
         status: "🌟 Available"
       });
     } else {
-      // Update existing profile
       let needsUpdate = false;
       if (profile.username !== username) {
         profile.username = username;
@@ -541,16 +529,14 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
   }
 });
 
-// ─── In‑memory room user tracker (with duplicate prevention by username) ─────
+// ─── In‑memory room user tracker ─────────────────────────────────────────────
 const rooms = {};
 
 const getUsers = (room) => rooms[room] || [];
 
 const addUser = (room, id, username, clerkId) => {
   if (!rooms[room]) rooms[room] = [];
-  // Remove any existing entry with the same username (prevents duplicates)
   rooms[room] = rooms[room].filter(u => u.username !== username);
-  // Add the new socket with clerkId
   rooms[room].push({ id, username, clerkId });
 };
 
@@ -606,7 +592,6 @@ io.on("connection", (socket) => {
 
     socket.emit("room_joined", { roomId: actualRoom });
 
-    // Sync user profile on join
     if (clerkId && mongoose.connection.readyState === 1) {
       await getOrCreateUserProfile(clerkId, username, "");
     }
@@ -619,7 +604,6 @@ io.on("connection", (socket) => {
           .limit(50)
           .lean();
         const historyWithStrId = history.map(serializeMessage);
-        // Attach read receipts for each message
         const messagesWithReceipts = await Promise.all(historyWithStrId.map(async (msg) => {
           const readers = await ReadReceipt.distinct("userId", { room: actualRoom, messageId: msg.id });
           return { ...msg, readBy: readers, readCount: readers.length };
@@ -634,7 +618,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Text Message (supports replyTo + auto read receipt) ─────────────────────
+  // ── Text Message ────────────────────────────────────────────────────────────
   socket.on("send_message", async (data) => {
     let savedMsg = null;
     if (mongoose.connection.readyState === 1) {
@@ -649,7 +633,6 @@ io.on("connection", (socket) => {
           editedAt: null,
           replyTo: data.replyTo || null
         }).save();
-        // Auto-read by sender
         await ReadReceipt.findOneAndUpdate(
           { room: data.room, messageId: savedMsg._id, userId: data.sender },
           { readAt: new Date() },
@@ -668,6 +651,8 @@ io.on("connection", (socket) => {
       type: "text",
       timestamp: data.timestamp || new Date().toISOString(),
       imageUrl: "",
+      voiceUrl: "",
+      voiceDuration: null,
       edited: savedMsg?.edited || false,
       editedAt: savedMsg?.editedAt || null,
       reactions: savedMsg?.reactions || {},
@@ -717,6 +702,8 @@ io.on("connection", (socket) => {
         type: "image",
         timestamp: timestamp || new Date().toISOString(),
         message: "",
+        voiceUrl: "",
+        voiceDuration: null,
         edited: savedMsg?.edited || false,
         editedAt: savedMsg?.editedAt || null,
         reactions: savedMsg?.reactions || {}
@@ -726,6 +713,63 @@ io.on("connection", (socket) => {
     } catch (err) {
       console.error("Cloudinary error:", err.message);
       socket.emit("image_error", { message: "Image upload failed. Check Cloudinary credentials." });
+    }
+  });
+
+  // ── Voice Message Upload ────────────────────────────────────────────────────
+  socket.on("send_voice", async (data) => {
+    const { room, audioBase64, sender, timestamp, duration, id } = data;
+
+    if (!audioBase64 || !audioBase64.startsWith("data:audio")) {
+      socket.emit("voice_error", { message: "Invalid audio format." });
+      return;
+    }
+
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY) {
+      socket.emit("voice_error", { message: "Voice storage is not configured on the server." });
+      return;
+    }
+
+    try {
+      const uploaded = await cloudinary.uploader.upload(audioBase64, {
+        folder: "nexchat_voice",
+        resource_type: "auto",
+        format: "mp3",
+      });
+
+      let savedMsg = null;
+      if (mongoose.connection.readyState === 1) {
+        savedMsg = await new Message({
+          room,
+          sender,
+          voiceUrl: uploaded.secure_url,
+          voiceDuration: duration,
+          type: "voice",
+          timestamp: timestamp ? new Date(timestamp) : new Date(),
+          edited: false,
+          editedAt: null,
+        }).save();
+      }
+
+      const finalMessage = {
+        id: savedMsg ? savedMsg._id.toString() : id,
+        room,
+        sender,
+        voiceUrl: uploaded.secure_url,
+        voiceDuration: duration,
+        type: "voice",
+        timestamp: timestamp || new Date().toISOString(),
+        message: "",
+        imageUrl: "",
+        edited: savedMsg?.edited || false,
+        editedAt: savedMsg?.editedAt || null,
+        reactions: savedMsg?.reactions || {}
+      };
+
+      io.to(room).emit("receive_voice", finalMessage);
+    } catch (err) {
+      console.error("Cloudinary voice error:", err.message);
+      socket.emit("voice_error", { message: "Voice upload failed. Please try again." });
     }
   });
 
@@ -746,7 +790,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Message Deletion (owner only) ───────────────────────────────────────────
+  // ── Message Deletion ────────────────────────────────────────────────────────
   socket.on("delete_message", async ({ room, msgId, username }) => {
     if (currentUser !== username) {
       socket.emit("delete_error", { message: "Not authorized" });
@@ -772,6 +816,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Edit Message ────────────────────────────────────────────────────────────
   socket.on("edit_message", async ({ room, msgId, newMessage, sender }) => {
     const trimmedMessage = String(newMessage || "").trim();
 
@@ -840,6 +885,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ─── Load Message Context ───────────────────────────────────────────────────
   socket.on("load_message_context", async ({ token, messageId }) => {
     try {
       if (!token || !messageId) {
@@ -871,11 +917,16 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ─── Typing Indicators ──────────────────────────────────────────────────────
   socket.on("typing_start", ({ room, username }) => {
     socket.to(room).emit("user_typing", { username, isTyping: true });
   });
 
-  // ─── Pin a message (max 5 per room) ──────────────────────────────────────────
+  socket.on("typing_stop", ({ room }) => {
+    socket.to(room).emit("user_typing", { username: currentUser, isTyping: false });
+  });
+
+  // ─── Pin a message (max 5 per room) ─────────────────────────────────────────
   socket.on("pin_message", async ({ room, msgId, username }) => {
     if (!currentRoom || currentUser !== username) {
       socket.emit("pin_error", { message: "Not authorized" });
@@ -907,7 +958,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Unpin a message ─────────────────────────────────────────────────────────
+  // ─── Unpin a message ────────────────────────────────────────────────────────
   socket.on("unpin_message", async ({ room, msgId, username }) => {
     if (!currentRoom || currentUser !== username) {
       socket.emit("pin_error", { message: "Not authorized" });
@@ -967,10 +1018,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("typing_stop", ({ room }) => {
-    socket.to(room).emit("user_typing", { username: currentUser, isTyping: false });
-  });
-
+  // ─── Disconnect ─────────────────────────────────────────────────────────────
   socket.on("disconnect", () => {
     console.log(`🔴 Disconnected: ${socket.id}`);
     if (currentRoom) {
