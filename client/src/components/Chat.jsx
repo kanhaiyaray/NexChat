@@ -847,12 +847,44 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .spin-icon { display: inline-block; animation: spin 1s linear infinite; }
 
     .context-menu {
-      position: fixed;
-      padding: 8px;
-      border-radius: 12px;
-      animation: fadeUp .15s ease;
-      z-index: 120;
-    }
+  position: fixed;
+  padding: 8px;
+  border-radius: 12px;
+  animation: fadeUp .15s ease;
+  z-index: 1000;
+  min-width: 140px;
+  max-width: 180px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(0,0,0,.45);
+}
+
+/* Ensure menu items are properly spaced */
+.context-menu-item {
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(255,255,255,.08);
+}
+
+.context-menu-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border);
+}
+
+.reaction-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  justify-content: center;
+}
     .context-menu-item {
       padding: 6px 12px;
       border-radius: 8px;
@@ -1162,7 +1194,7 @@ function parseToken(input = "") {
     const url = new URL(trimmed);
     const token = url.searchParams.get("token");
     if (token) return token;
-  } catch {}
+  } catch { }
   return trimmed;
 }
 
@@ -1320,7 +1352,7 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
       }
       try {
         await navigator.clipboard.writeText(data.inviteLink);
-      } catch {}
+      } catch { }
       onJoin(data.token, data.roomId);
     } catch (error) {
       setErrorMsg(error.message || "Server error");
@@ -1514,10 +1546,37 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const handleContextMenu = (event, msgId, sender) => {
     event.preventDefault();
     const targetMessage = messages.find((msg) => msg.id === msgId);
+
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Approximate menu dimensions
+    const menuWidth = 160;
+    const menuHeight = 200;
+
+    // Calculate position with boundary checking
+    let x = event.clientX;
+    let y = event.clientY;
+
+    // Check right edge
+    if (x + menuWidth > viewportWidth) {
+      x = viewportWidth - menuWidth - 10;
+    }
+
+    // Check bottom edge
+    if (y + menuHeight > viewportHeight) {
+      y = viewportHeight - menuHeight - 10;
+    }
+
+    // Ensure not going off left or top
+    x = Math.max(10, x);
+    y = Math.max(10, y);
+
     setContextMenu({
       visible: true,
-      x: event.clientX,
-      y: event.clientY,
+      x: x,
+      y: y,
       msgId,
       sender,
       type: targetMessage?.type || "text",
@@ -2350,7 +2409,14 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         </div>
 
         {contextMenu.visible ? (
-          <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+          <div
+            className="context-menu"
+            style={{
+              top: contextMenu.y,
+              left: contextMenu.x,
+              position: "fixed"
+            }}
+          >
             <div className="reaction-row">
               {REACTIONS.map((emoji) => (
                 <span key={emoji} className="reaction-opt" onClick={() => addReaction(contextMenu.msgId, emoji)}>
@@ -2489,12 +2555,12 @@ const Chat = () => {
       setToken(urlToken);
       try {
         sessionStorage.setItem("nexchat_token", urlToken);
-      } catch {}
+      } catch { }
     } else {
       try {
         const savedToken = sessionStorage.getItem("nexchat_token");
         if (savedToken) setToken(savedToken);
-      } catch {}
+      } catch { }
     }
   }, []);
 
@@ -2534,7 +2600,7 @@ const Chat = () => {
           setJoined(true);
           try {
             sessionStorage.setItem("nexchat_token", nextToken);
-          } catch {}
+          } catch { }
           window.history.replaceState({}, "", window.location.pathname);
         }}
       />
@@ -2553,7 +2619,7 @@ const Chat = () => {
         setRoomId(null);
         try {
           sessionStorage.removeItem("nexchat_token");
-        } catch {}
+        } catch { }
       }}
     />
   );
