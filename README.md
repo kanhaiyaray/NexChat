@@ -495,8 +495,6 @@ nexchat/
 │                                    #   - 15+ Socket.IO event handlers
 │                                    #   - Cloudinary upload logic
 │                                    #   - In-memory room state
-│
-├── export.js                        # Codebase export utility
 └── README.md
 ```
 
