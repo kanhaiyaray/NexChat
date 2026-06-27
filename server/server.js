@@ -77,22 +77,33 @@ const ReadReceipt = mongoose.models.ReadReceipt || mongoose.model("ReadReceipt",
 // ─── PrivateRoom Schema (with pinnedMessages) ─────────────────────────────────
 const privateRoomSchema = new mongoose.Schema({
   roomId: { type: String, required: true, unique: true },
-  token: { type: String, required: true, unique: true },
+  code: { type: String, required: true, unique: true },  // short invite code
   createdBy: { type: String, default: "anonymous" },
   createdAt: { type: Date, default: Date.now },
   pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }]
 });
 const PrivateRoom = mongoose.models.PrivateRoom || mongoose.model("PrivateRoom", privateRoomSchema);
 
-// ─── UserProfile Schema ──────────────────────────────────────────────────────
+// ─── UserProfile Schema (UPDATED) ────────────────────────────────────────────
 const userProfileSchema = new mongoose.Schema({
   clerkId: { type: String, required: true, unique: true, index: true },
-  username: { type: String, required: true },
-  email: { type: String, default: "" },
-  avatarUrl: { type: String, default: "" },
-  avatarColor: { type: String, default: "" },
-  bio: { type: String, default: "", maxlength: 160 },
-  status: { type: String, default: "🌟 Available", maxlength: 40 },
+  username: { type: String, required: true, unique: true },
+  displayName: { type: String, default: '' },
+  email: { type: String, default: '' },
+  avatarUrl: { type: String, default: '' },
+  avatarColor: { type: String, default: '' },
+  bio: { type: String, default: '', maxlength: 160 },
+  statusEmoji: { type: String, default: '🌟' },
+  statusText: { type: String, default: 'Available', maxlength: 40 },
+  lastSeen: { type: Date, default: Date.now },
+  visibility: { type: String, enum: ['public', 'friends', 'private'], default: 'public' },
+  hideOnlineStatus: { type: Boolean, default: false },
+  hideReadReceipts: { type: Boolean, default: false },
+  activityFeed: { type: [{
+    message: String,
+    timestamp: Date,
+    roomId: String
+  }], default: [] },
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
 });
@@ -106,6 +117,7 @@ async function getUserProfile(clerkId) {
   return await UserProfile.findOne({ clerkId }).lean();
 }
 
+// UPDATED getOrCreateUserProfile with new fields
 async function getOrCreateUserProfile(clerkId, username, email) {
   if (mongoose.connection.readyState !== 1) return null;
 
@@ -120,27 +132,59 @@ async function getOrCreateUserProfile(clerkId, username, email) {
     profile = await UserProfile.create({
       clerkId,
       username,
+      displayName: username,
       email: email || "",
       avatarColor: randomColor,
       bio: "",
-      status: "🌟 Available"
+      statusEmoji: '🌟',
+      statusText: 'Available',
+      visibility: 'public',
+      hideOnlineStatus: false,
+      hideReadReceipts: false,
     });
-  } else if (profile.username !== username) {
-    profile.username = username;
+  } else {
+    // Update username if changed
+    if (profile.username !== username) {
+      profile.username = username;
+      // If displayName is empty or equals old username, update it
+      if (!profile.displayName || profile.displayName === profile.username) {
+        profile.displayName = username;
+      }
+    }
+    if (email && profile.email !== email) {
+      profile.email = email;
+    }
     await profile.save();
   }
   return profile;
 }
 
-// ─── In‑memory token → roomId map ────────────────────────────────────────────
-const tokenRoomMap = new Map();
+// ─── Short code generator ──────────────────────────────────────────────────
+async function generateShortCode(length = 6) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/I/l
+  let code;
+  let exists = true;
+  while (exists) {
+    code = '';
+    for (let i = 0; i < length; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    // Check uniqueness in DB
+    const found = await PrivateRoom.findOne({ code });
+    if (!found) exists = false;
+  }
+  return code;
+}
 
-async function resolveToken(token) {
-  if (tokenRoomMap.has(token)) return tokenRoomMap.get(token);
+// ─── In‑memory code → roomId map ──────────────────────────────────────────────
+const codeRoomMap = new Map();
+
+async function resolveCode(code) {
+  if (codeRoomMap.has(code)) return codeRoomMap.get(code);
   if (mongoose.connection.readyState === 1) {
-    const doc = await PrivateRoom.findOne({ token }).lean();
+    const doc = await PrivateRoom.findOne({ code }).lean();
     if (doc) {
-      tokenRoomMap.set(token, doc.roomId);
+      codeRoomMap.set(code, doc.roomId);
       return doc.roomId;
     }
   }
@@ -238,55 +282,55 @@ app.get("/health", (_, res) => res.json({ status: "ok", time: new Date() }));
 app.post("/api/create-chat", async (req, res) => {
   try {
     const roomId = `room_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
-    const token = randomUUID().replace(/-/g, "");
+    const code = await generateShortCode();
     const createdBy = req.body?.userId || "anonymous";
 
-    tokenRoomMap.set(token, roomId);
+    codeRoomMap.set(code, roomId);
 
     if (mongoose.connection.readyState === 1) {
-      await PrivateRoom.create({ roomId, token, createdBy }).catch(err => {
+      await PrivateRoom.create({ roomId, code, createdBy }).catch(err => {
         console.warn("PrivateRoom DB save warning:", err.message);
       });
     }
 
     const origin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
-    const inviteLink = `${origin}?token=${token}`;
+    const inviteLink = `${origin}/join/${code}`;
 
-    console.log(`🔒 New private room created: ${roomId}`);
-    res.json({ roomId, token, inviteLink });
+    console.log(`🔒 New private room created: ${roomId} (code: ${code})`);
+    res.json({ roomId, code, inviteLink });
   } catch (err) {
     console.error("❌ Create chat error:", err.message);
     res.status(500).json({ error: "Failed to create private chat room." });
   }
 });
 
-app.get("/api/validate-token/:token", async (req, res) => {
+app.get("/api/validate-code/:code", async (req, res) => {
   try {
-    const { token } = req.params;
-    if (!token || token.length < 8) {
-      return res.status(400).json({ error: "Invalid token format." });
+    const { code } = req.params;
+    if (!code || code.length < 4) {
+      return res.status(400).json({ error: "Invalid invite code format." });
     }
 
-    const roomId = await resolveToken(token);
+    const roomId = await resolveCode(code);
     if (!roomId) {
-      return res.status(404).json({ error: "Invalid or expired invite link." });
+      return res.status(404).json({ error: "Invalid or expired invite code." });
     }
 
     res.json({ roomId, valid: true });
   } catch (err) {
-    console.error("❌ Validate token error:", err.message);
-    res.status(500).json({ error: "Token validation failed." });
+    console.error("❌ Validate code error:", err.message);
+    res.status(500).json({ error: "Code validation failed." });
   }
 });
 
 app.get("/api/search", async (req, res) => {
   try {
-    const token = String(req.query.token || "");
+    const code = String(req.query.code || "");
     const roomId = String(req.query.roomId || "");
     const query = String(req.query.q || "").trim();
 
-    if (!token || token.length < 8) {
-      return res.status(400).json({ error: "A valid room token is required." });
+    if (!code || code.length < 4) {
+      return res.status(400).json({ error: "A valid room code is required." });
     }
 
     if (!query) {
@@ -297,9 +341,9 @@ app.get("/api/search", async (req, res) => {
       return res.status(503).json({ error: "Search is unavailable right now." });
     }
 
-    const resolvedRoomId = await resolveToken(token);
+    const resolvedRoomId = await resolveCode(code);
     if (!resolvedRoomId) {
-      return res.status(404).json({ error: "Invalid or expired invite link." });
+      return res.status(404).json({ error: "Invalid or expired invite code." });
     }
 
     if (roomId && roomId !== resolvedRoomId) {
@@ -358,9 +402,11 @@ app.post("/api/webhook/clerk", express.json(), async (req, res) => {
   }
 });
 
+// UPDATED GET /api/user/profile/:clerkId with visibility control
 app.get("/api/user/profile/:clerkId", async (req, res) => {
   try {
     const { clerkId } = req.params;
+    const requesterId = req.query.requesterId; // new
     if (!clerkId) {
       return res.status(400).json({ error: "clerkId required" });
     }
@@ -370,7 +416,40 @@ app.get("/api/user/profile/:clerkId", async (req, res) => {
       return res.status(404).json({ error: "Profile not found" });
     }
 
-    res.json(profile);
+    const isOwner = requesterId === clerkId;
+
+    // Base response – always include public fields
+    const response = {
+      clerkId: profile.clerkId,
+      username: profile.username,
+      displayName: profile.displayName || profile.username,
+      avatarUrl: profile.avatarUrl,
+      avatarColor: profile.avatarColor,
+      statusEmoji: profile.statusEmoji,
+      statusText: profile.statusText,
+    };
+
+    // Determine visibility of extra fields
+    const canSeeFull = isOwner || profile.visibility === 'public' || profile.visibility === 'friends';
+    if (canSeeFull) {
+      response.bio = profile.bio;
+      response.email = profile.email;
+      response.lastSeen = profile.lastSeen;
+      response.hideOnlineStatus = profile.hideOnlineStatus;
+      response.hideReadReceipts = profile.hideReadReceipts;
+      response.visibility = profile.visibility;
+    } else {
+      response.bio = null;
+      response.email = null;
+      response.lastSeen = null;
+    }
+
+    // Only return activityFeed if owner
+    if (isOwner) {
+      response.activityFeed = profile.activityFeed || [];
+    }
+
+    res.json(response);
   } catch (err) {
     console.error("Get profile error:", err.message);
     res.status(500).json({ error: "Failed to fetch profile" });
@@ -389,10 +468,11 @@ const upload = multer({
   }
 });
 
+// UPDATED POST /api/user/profile/:clerkId with new fields
 app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res) => {
   try {
     const { clerkId } = req.params;
-    const { bio, status, avatarColor } = req.body;
+    const { bio, status, avatarColor, displayName, statusEmoji, statusText, visibility, hideOnlineStatus, hideReadReceipts } = req.body;
 
     if (!clerkId) {
       return res.status(400).json({ error: "clerkId required" });
@@ -415,9 +495,16 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
 
     const updateData = {};
     if (bio !== undefined) updateData.bio = bio?.slice(0, 160);
-    if (status !== undefined) updateData.status = status?.slice(0, 40);
+    if (status !== undefined) updateData.status = status?.slice(0, 40); // legacy field, keep for compatibility
     if (avatarColor !== undefined) updateData.avatarColor = avatarColor;
     if (avatarUrl !== null) updateData.avatarUrl = avatarUrl;
+    // New fields
+    if (displayName !== undefined) updateData.displayName = displayName.trim().slice(0, 40);
+    if (statusEmoji !== undefined) updateData.statusEmoji = statusEmoji;
+    if (statusText !== undefined) updateData.statusText = statusText.trim().slice(0, 40);
+    if (visibility !== undefined) updateData.visibility = visibility;
+    if (hideOnlineStatus !== undefined) updateData.hideOnlineStatus = hideOnlineStatus === 'true' || hideOnlineStatus === true;
+    if (hideReadReceipts !== undefined) updateData.hideReadReceipts = hideReadReceipts === 'true' || hideReadReceipts === true;
     updateData.updatedAt = new Date();
 
     const profile = await UserProfile.findOneAndUpdate(
@@ -426,13 +513,18 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
       { new: true, upsert: true }
     );
 
+    // Broadcast profile update to all rooms where the user is present
     const userUpdate = {
       clerkId,
       username: profile.username,
+      displayName: profile.displayName || profile.username,
       avatarUrl: profile.avatarUrl,
       avatarColor: profile.avatarColor,
-      status: profile.status,
-      bio: profile.bio
+      statusEmoji: profile.statusEmoji,
+      statusText: profile.statusText,
+      hideOnlineStatus: profile.hideOnlineStatus,
+      bio: profile.bio,
+      lastSeen: profile.lastSeen,
     };
 
     for (const [roomId, users] of Object.entries(rooms)) {
@@ -464,7 +556,12 @@ app.post("/api/user/profiles/batch", express.json(), async (req, res) => {
         avatarColor: p.avatarColor,
         bio: p.bio,
         status: p.status,
-        username: p.username
+        username: p.username,
+        displayName: p.displayName,
+        statusEmoji: p.statusEmoji,
+        statusText: p.statusText,
+        hideOnlineStatus: p.hideOnlineStatus,
+        lastSeen: p.lastSeen,
       };
     });
 
@@ -496,16 +593,24 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
       profile = await UserProfile.create({
         clerkId,
         username,
+        displayName: username,
         email: email || "",
         avatarUrl: avatarUrl || "",
         avatarColor: randomColor,
         bio: "",
-        status: "🌟 Available"
+        statusEmoji: '🌟',
+        statusText: 'Available',
+        visibility: 'public',
+        hideOnlineStatus: false,
+        hideReadReceipts: false,
       });
     } else {
       let needsUpdate = false;
       if (profile.username !== username) {
         profile.username = username;
+        if (!profile.displayName || profile.displayName === profile.username) {
+          profile.displayName = username;
+        }
         needsUpdate = true;
       }
       if (email && profile.email !== email) {
@@ -529,15 +634,17 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
   }
 });
 
-// ─── In‑memory room user tracker ─────────────────────────────────────────────
+// ─── In‑memory room user tracker (UPDATED addUser) ──────────────────────────
 const rooms = {};
 
 const getUsers = (room) => rooms[room] || [];
 
-const addUser = (room, id, username, clerkId) => {
+// UPDATED addUser to accept full user data object
+const addUser = (room, id, userData) => {
   if (!rooms[room]) rooms[room] = [];
-  rooms[room] = rooms[room].filter(u => u.username !== username);
-  rooms[room].push({ id, username, clerkId });
+  // remove old entry with same username
+  rooms[room] = rooms[room].filter(u => u.username !== userData.username);
+  rooms[room].push({ id, ...userData });
 };
 
 const removeUser = (room, id) => {
@@ -553,26 +660,26 @@ io.on("connection", (socket) => {
   let currentRoom = null;
   let currentUser = null;
 
-  socket.on("join_room", async ({ username, token, clerkId }) => {
-    if (!token) {
+  socket.on("join_room", async ({ username, code, clerkId }) => {
+    if (!code) {
       socket.emit("join_error", {
-        message: "An invite token is required. Please use a valid invite link.",
+        message: "An invite code is required. Please use a valid invite link.",
       });
       return;
     }
 
     let actualRoom;
     try {
-      actualRoom = await resolveToken(token);
+      actualRoom = await resolveCode(code);
     } catch (err) {
-      console.error("Token resolution error:", err.message);
+      console.error("Code resolution error:", err.message);
       socket.emit("join_error", { message: "Server error. Please try again." });
       return;
     }
 
     if (!actualRoom) {
       socket.emit("join_error", {
-        message: "Invalid or expired invite link. Ask the host for a new link.",
+        message: "Invalid or expired invite code. Ask the host for a new link.",
       });
       return;
     }
@@ -586,15 +693,34 @@ io.on("connection", (socket) => {
     currentRoom = actualRoom;
     currentUser = username;
 
+    // ── Get or create profile and add user with full data ──
+    const profile = await getOrCreateUserProfile(clerkId, username, "");
+    if (profile) {
+      const userData = {
+        username: profile.username,
+        clerkId: profile.clerkId,
+        displayName: profile.displayName || profile.username,
+        statusEmoji: profile.statusEmoji,
+        statusText: profile.statusText,
+        hideOnlineStatus: profile.hideOnlineStatus,
+        avatarUrl: profile.avatarUrl,
+        avatarColor: profile.avatarColor,
+        // lastSeen will be sent separately, but we store it anyway
+        lastSeen: profile.lastSeen,
+      };
+      addUser(actualRoom, socket.id, userData);
+      // update lastSeen
+      profile.lastSeen = new Date();
+      await profile.save();
+    } else {
+      // fallback: add with minimal data
+      addUser(actualRoom, socket.id, { username, clerkId, displayName: username });
+    }
+
     socket.join(actualRoom);
-    addUser(actualRoom, socket.id, username, clerkId);
     io.to(actualRoom).emit("update_users", getUsers(actualRoom));
 
     socket.emit("room_joined", { roomId: actualRoom });
-
-    if (clerkId && mongoose.connection.readyState === 1) {
-      await getOrCreateUserProfile(clerkId, username, "");
-    }
 
     try {
       if (mongoose.connection.readyState === 1) {
@@ -618,7 +744,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Text Message ────────────────────────────────────────────────────────────
+  // ── Text Message (UPDATED to update activity feed) ──────────────────────
   socket.on("send_message", async (data) => {
     let savedMsg = null;
     if (mongoose.connection.readyState === 1) {
@@ -638,6 +764,22 @@ io.on("connection", (socket) => {
           { readAt: new Date() },
           { upsert: true }
         );
+
+        // Update activity feed and lastSeen for the sender
+        if (data.clerkId) {
+          await UserProfile.updateOne(
+            { clerkId: data.clerkId },
+            {
+              $push: {
+                activityFeed: {
+                  $each: [{ message: data.message, timestamp: new Date(), roomId: data.room }],
+                  $slice: -20
+                }
+              },
+              $set: { lastSeen: new Date() }
+            }
+          );
+        }
       } catch (err) {
         console.error("Message save error:", err.message);
       }
@@ -664,7 +806,7 @@ io.on("connection", (socket) => {
 
   // ── Image Upload ────────────────────────────────────────────────────────────
   socket.on("send_image", async (data) => {
-    const { room, imageBase64, sender, timestamp, id } = data;
+    const { room, imageBase64, sender, timestamp, id, clerkId } = data;
 
     if (!imageBase64 || !imageBase64.startsWith("data:image")) {
       socket.emit("image_error", { message: "Invalid image format." });
@@ -693,6 +835,22 @@ io.on("connection", (socket) => {
           edited: false,
           editedAt: null,
         }).save();
+
+        // Update activity feed
+        if (clerkId) {
+          await UserProfile.updateOne(
+            { clerkId },
+            {
+              $push: {
+                activityFeed: {
+                  $each: [{ message: "📷 Image shared", timestamp: new Date(), roomId: room }],
+                  $slice: -20
+                }
+              },
+              $set: { lastSeen: new Date() }
+            }
+          );
+        }
       }
 
       const finalMessage = {
@@ -718,7 +876,7 @@ io.on("connection", (socket) => {
 
   // ── Voice Message Upload ────────────────────────────────────────────────────
   socket.on("send_voice", async (data) => {
-    const { room, audioBase64, sender, timestamp, duration, id } = data;
+    const { room, audioBase64, sender, timestamp, duration, id, clerkId } = data;
 
     if (!audioBase64 || !audioBase64.startsWith("data:audio")) {
       socket.emit("voice_error", { message: "Invalid audio format." });
@@ -749,6 +907,21 @@ io.on("connection", (socket) => {
           edited: false,
           editedAt: null,
         }).save();
+
+        if (clerkId) {
+          await UserProfile.updateOne(
+            { clerkId },
+            {
+              $push: {
+                activityFeed: {
+                  $each: [{ message: "🎤 Voice message", timestamp: new Date(), roomId: room }],
+                  $slice: -20
+                }
+              },
+              $set: { lastSeen: new Date() }
+            }
+          );
+        }
       }
 
       const finalMessage = {
@@ -886,14 +1059,14 @@ io.on("connection", (socket) => {
   });
 
   // ─── Load Message Context ───────────────────────────────────────────────────
-  socket.on("load_message_context", async ({ token, messageId }) => {
+  socket.on("load_message_context", async ({ code, messageId }) => {
     try {
-      if (!token || !messageId) {
-        socket.emit("message_context_error", { message: "Token and message id are required." });
+      if (!code || !messageId) {
+        socket.emit("message_context_error", { message: "Code and message id are required." });
         return;
       }
 
-      const actualRoom = await resolveToken(token);
+      const actualRoom = await resolveCode(code);
       if (!actualRoom || actualRoom !== currentRoom) {
         socket.emit("message_context_error", { message: "You are not authorized for this room." });
         return;
@@ -998,10 +1171,23 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Read Receipts ──────────────────────────────────────────────────────────
+  // ─── Read Receipts (UPDATED to respect hideReadReceipts) ──────────────────
   socket.on("message_read", async ({ room, msgId, username }) => {
     if (!room || !msgId || !username) return;
     try {
+      // Check if user wants to hide read receipts
+      const profile = await UserProfile.findOne({ username });
+      if (profile && profile.hideReadReceipts) {
+        // Still record the receipt for internal use but don't emit
+        await ReadReceipt.findOneAndUpdate(
+          { room, messageId: msgId, userId: username },
+          { readAt: new Date() },
+          { upsert: true }
+        );
+        return;
+      }
+
+      // Otherwise, record and emit
       await ReadReceipt.findOneAndUpdate(
         { room, messageId: msgId, userId: username },
         { readAt: new Date() },
@@ -1018,12 +1204,25 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Disconnect ─────────────────────────────────────────────────────────────
+  // ─── Disconnect (UPDATED to update lastSeen) ──────────────────────────────
   socket.on("disconnect", () => {
     console.log(`🔴 Disconnected: ${socket.id}`);
     if (currentRoom) {
       removeUser(currentRoom, socket.id);
       io.to(currentRoom).emit("update_users", getUsers(currentRoom));
+      // update lastSeen for this user
+      if (currentUser) {
+        (async () => {
+          try {
+            await UserProfile.findOneAndUpdate(
+              { username: currentUser },
+              { $set: { lastSeen: new Date() } }
+            );
+          } catch (err) {
+            console.warn("Failed to update lastSeen on disconnect:", err.message);
+          }
+        })();
+      }
     }
   });
 });

@@ -1693,7 +1693,7 @@ function isEditableMessage(message, username) {
   return Date.now() - timestamp <= EDIT_WINDOW_MS;
 }
 
-const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
+const PrivateJoinScreen = ({ clerkUser, initialCode, onJoin }) => {
   const [pastedLink, setPastedLink] = useState("");
   const [creating, setCreating] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -1706,16 +1706,16 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
     "User";
 
   useEffect(() => {
-    if (initialToken) {
-      validateAndJoin(initialToken);
+    if (initialCode) {
+      validateAndJoin(initialCode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialToken]);
+  }, [initialCode]);
 
   const validateAndJoin = async (rawInput) => {
-    const token = parseToken(rawInput);
-    if (!token) {
-      setErrorMsg("Please enter a valid invite link or token.");
+    const code = rawInput.trim();
+    if (!code || code.length < 4) {
+      setErrorMsg("Please enter a valid invite code.");
       return;
     }
 
@@ -1723,12 +1723,12 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
     setErrorMsg("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/validate-token/${encodeURIComponent(token)}`);
+      const response = await fetch(`${API_BASE}/api/validate-code/${encodeURIComponent(code)}`);
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Invalid link");
+        throw new Error(data.error || "Invalid code");
       }
-      onJoin(token, data.roomId);
+      onJoin(code, data.roomId);
     } catch (error) {
       setErrorMsg(error.message || "Could not reach the server.");
     } finally {
@@ -1753,7 +1753,7 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
       try {
         await navigator.clipboard.writeText(data.inviteLink);
       } catch { }
-      onJoin(data.token, data.roomId);
+      onJoin(data.code, data.roomId);
     } catch (error) {
       setErrorMsg(error.message || "Server error");
     } finally {
@@ -1807,13 +1807,13 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
           Generates a secret invite link. Only people you share it with can join.
         </p>
 
-        <div className="divider">or join with a link</div>
+        <div className="divider">or join with a code</div>
 
         <div className="field-group">
-          <label className="field-label">Paste invite link or token</label>
+          <label className="field-label">Enter invite code</label>
           <input
             className="field-input"
-            placeholder="https://your-nexchat-link/?token=..."
+            placeholder="e.g. AB7K92 or full link /join/AB7K92"
             value={pastedLink}
             onChange={(event) => {
               setPastedLink(event.target.value);
@@ -1841,7 +1841,7 @@ const PrivateJoinScreen = ({ clerkUser, initialToken, onJoin }) => {
   );
 };
 
-const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
+const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [image, setImage] = useState(null);
@@ -1896,7 +1896,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   const shouldAutoScrollRef = useRef(true);
 
   const displayRoom = shortRoomId(roomId);
-  const inviteLink = `${window.location.origin}${window.location.pathname}?token=${token}`;
+  const inviteLink = `${window.location.origin}/join/${code}`;
   const mySocketId = socket.id;
 
   const showToast = (text, type = "info") => {
@@ -1914,13 +1914,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   }
   
   try {
-    // ✅ FIXED: Using full URL with API_BASE
     const url = `${API_BASE}/api/user/profile/${clerkId}`;
     console.log("Fetching from:", url);
     const response = await fetch(url);
     
     if (response.status === 404) {
-      // ✅ FIXED: Using full URL with API_BASE for sync too
       const syncUrl = `${API_BASE}/api/user/sync/${clerkId}`;
       const syncResponse = await fetch(syncUrl, {
         method: "POST",
@@ -2006,10 +2004,31 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
   // Socket listener for profile updates
   useEffect(() => {
     const onProfileUpdated = (updatedProfile) => {
-      setUserProfilesCache(prev => ({
-        ...prev,
-        [updatedProfile.clerkId]: updatedProfile
-      }));
+      // Update cache by username (and also by clerkId for convenience)
+      setUserProfilesCache(prev => {
+        const newCache = { ...prev };
+        // update by username
+        newCache[updatedProfile.username] = {
+          displayName: updatedProfile.displayName || updatedProfile.username,
+          statusEmoji: updatedProfile.statusEmoji || '🌟',
+          statusText: updatedProfile.statusText || 'Available',
+          hideOnlineStatus: updatedProfile.hideOnlineStatus || false,
+          avatarUrl: updatedProfile.avatarUrl,
+          avatarColor: updatedProfile.avatarColor,
+        };
+        // also by clerkId if available (for compatibility)
+        if (updatedProfile.clerkId) {
+          newCache[updatedProfile.clerkId] = newCache[updatedProfile.username];
+        }
+        return newCache;
+      });
+      // Also update users list if that user is in the list
+      setUsers(prevUsers => prevUsers.map(u =>
+        u.username === updatedProfile.username
+          ? { ...u, ...updatedProfile }
+          : u
+      ));
+      // If it's our own profile, update userProfile
       if (updatedProfile.clerkId === clerkUser?.id) {
         setUserProfile(updatedProfile);
       }
@@ -2093,13 +2112,14 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       room: roomId,
       audioBase64: audioBase64,
       sender: username,
+      clerkId: clerkUser?.id,          // ← new
       timestamp: new Date().toISOString(),
       duration: duration,
     });
   };
 
   useEffect(() => {
-    socket.emit("join_room", { username, token, clerkId: clerkUser?.id });
+    socket.emit("join_room", { username, code, clerkId: clerkUser?.id });
     socket.emit("get_pinned_messages", { room: roomId });
 
     const onJoinError = ({ message: errorMessage }) => {
@@ -2159,7 +2179,27 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       setVoiceUploading(false);
     };
 
-    const onUpdateUsers = (data) => setUsers(data);
+    const onUpdateUsers = (data) => {
+      setUsers(data);
+      // Update cache with profiles
+      const newCache = {};
+      data.forEach(user => {
+        newCache[user.username] = {
+          displayName: user.displayName || user.username,
+          statusEmoji: user.statusEmoji || '🌟',
+          statusText: user.statusText || 'Available',
+          hideOnlineStatus: user.hideOnlineStatus || false,
+          avatarUrl: user.avatarUrl,
+          avatarColor: user.avatarColor,
+        };
+        // also store by clerkId for convenience
+        if (user.clerkId) {
+          newCache[user.clerkId] = newCache[user.username];
+        }
+      });
+      setUserProfilesCache(prev => ({ ...prev, ...newCache }));
+    };
+
     const onUserTyping = ({ username: typingUser, isTyping }) => setTyping(isTyping ? typingUser : "");
 
     const onUpdateReaction = ({ msgId, emoji }) => {
@@ -2294,7 +2334,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       socket.off("message_unpinned", onMessageUnpinned);
       socket.off("receipts_updated", onReceiptsUpdated);
     };
-  }, [historyLoaded, onLeave, roomId, token, username, clerkUser?.id]);
+  }, [historyLoaded, onLeave, roomId, code, username, clerkUser?.id]);
 
   useEffect(() => {
     if (!messagesAreaRef.current) return;
@@ -2356,6 +2396,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
       room: roomId,
       message: trimmed,
       sender: username,
+      clerkId: clerkUser?.id,          // ← new
       timestamp: new Date().toISOString(),
     });
     setMessage("");
@@ -2373,6 +2414,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
         room: roomId,
         imageBase64: reader.result,
         sender: username,
+        clerkId: clerkUser?.id,          // ← new
         timestamp: new Date().toISOString(),
       });
       setImage(null);
@@ -2472,7 +2514,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
     try {
       const url = new URL(`${API_BASE}/api/search`);
-      url.searchParams.set("token", token);
+      url.searchParams.set("code", code);
       url.searchParams.set("roomId", roomId);
       url.searchParams.set("q", query);
 
@@ -2515,7 +2557,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
     }
 
     pendingScrollTargetRef.current = result.id;
-    socket.emit("load_message_context", { token, messageId: result.id });
+    socket.emit("load_message_context", { code, messageId: result.id });
   };
 
   const dismissSearchContext = () => {
@@ -2554,26 +2596,39 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
           </button>
         </div>
 
-        <div className="room-badge">
-          <span>🔒</span>#{displayRoom}
-        </div>
-        <div className="private-badge">✦ Private chat</div>
-
         <div className="users-section">
           <div className="section-label">Members - {users.length}</div>
           {users.map((user, index) => {
-            const profile = userProfilesCache[user.clerkId];
+            const profile = userProfilesCache[user.username] || {};
+            const displayName = profile.displayName || user.username;
+            const statusEmoji = profile.statusEmoji || '🌟';
+            const statusText = profile.statusText || 'Available';
+            const hideOnlineStatus = profile.hideOnlineStatus || false;
+            const showOnlineDot = !hideOnlineStatus;
+
             return (
               <div key={user.id} className="user-item" style={{ animationDelay: `${index * 0.05}s` }}>
-                <div className="online-ring">
+                <div className={`online-ring${!showOnlineDot ? ' no-dot' : ''}`} style={!showOnlineDot ? { position: 'relative' } : {}}>
                   <div
                     className="avatar"
                     style={profile?.avatarUrl ? { backgroundImage: `url(${profile.avatarUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : { background: profile?.avatarColor ? `${profile.avatarColor}40` : "rgba(61,214,245,.25)", color: profile?.avatarColor || "#3dd6f5" }}
                   >
-                    {!profile?.avatarUrl && initials(user.username)}
+                    {!profile?.avatarUrl && initials(displayName)}
                   </div>
+                  {!showOnlineDot && (
+                    <div style={{
+                      position: 'absolute',
+                      right: '-1px',
+                      bottom: '-1px',
+                      width: '9px',
+                      height: '9px',
+                      borderRadius: '50%',
+                      background: 'var(--muted)',
+                      border: '2px solid var(--surface)',
+                    }} />
+                  )}
                 </div>
-                <span className="user-name">{user.username}</span>
+                <span className="user-name">{displayName} {statusEmoji}</span>
                 {user.id === mySocketId ? <span className="you-tag">you</span> : null}
               </div>
             );
@@ -2602,7 +2657,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                         setTimeout(() => node.classList.remove("targeted"), 1500);
                       } else {
                         pendingScrollTargetRef.current = msg.id;
-                        socket.emit("load_message_context", { token, messageId: msg.id });
+                        socket.emit("load_message_context", { code, messageId: msg.id });
                       }
                     }}
                   >
@@ -2642,8 +2697,11 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
               </div>
             )}
             <div>
-              <div className="my-name">{username}</div>
-              <div className="my-status">{userProfile?.status || "● Active"}</div>
+              <div className="my-name">
+                {userProfile?.displayName || username}
+                {userProfile?.statusEmoji && ` ${userProfile.statusEmoji}`}
+              </div>
+              <div className="my-status">{userProfile?.statusText || "● Active"}</div>
             </div>
           </div>
           <button className="edit-profile-btn" onClick={() => setProfileModalOpen(true)}>
@@ -2663,7 +2721,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
             </button>
             <div style={{ minWidth: 0 }}>
               <div className="room-name">🔒 Private Chat</div>
-              <div className="room-subtitle">#{displayRoom} · Only invited members can see this</div>
+              <div className="room-subtitle">#{displayRoom}</div>
             </div>
           </div>
 
@@ -2792,6 +2850,10 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                 const isTargeted = highlightedMessageId === msg.id;
                 const isEditingThisMessage = editingMessageId === msg.id;
 
+                // Get display name from cache
+                const senderProfile = userProfilesCache[msg.sender] || {};
+                const displayName = senderProfile.displayName || msg.sender;
+
                 return (
                   <div
                     key={msg.id}
@@ -2810,7 +2872,7 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
                     ) : null}
 
                     <div className="msg-content">
-                      {showAvatar && !isOwn ? <div className="msg-sender">{msg.sender}</div> : null}
+                      {showAvatar && !isOwn ? <div className="msg-sender">{displayName}</div> : null}
 
                       <div style={{ position: "relative" }}>
                         {isEditingThisMessage ? (
@@ -3074,7 +3136,23 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
           setUserProfile(updatedProfile);
           setUserProfilesCache(prev => ({
             ...prev,
-            [clerkUser.id]: updatedProfile
+            [updatedProfile.username]: {
+              displayName: updatedProfile.displayName || updatedProfile.username,
+              statusEmoji: updatedProfile.statusEmoji || '🌟',
+              statusText: updatedProfile.statusText || 'Available',
+              hideOnlineStatus: updatedProfile.hideOnlineStatus || false,
+              avatarUrl: updatedProfile.avatarUrl,
+              avatarColor: updatedProfile.avatarColor,
+            },
+            // also by clerkId
+            [updatedProfile.clerkId]: {
+              displayName: updatedProfile.displayName || updatedProfile.username,
+              statusEmoji: updatedProfile.statusEmoji || '🌟',
+              statusText: updatedProfile.statusText || 'Available',
+              hideOnlineStatus: updatedProfile.hideOnlineStatus || false,
+              avatarUrl: updatedProfile.avatarUrl,
+              avatarColor: updatedProfile.avatarColor,
+            }
           }));
         }}
       />
@@ -3084,22 +3162,32 @@ const ChatScreen = ({ username, roomId, token, clerkUser, onLeave }) => {
 
 const Chat = () => {
   const { isSignedIn, isLoaded, user } = useUser();
-  const [token, setToken] = useState(null);
+  const [code, setCode] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [joined, setJoined] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get("token");
-    if (urlToken) {
-      setToken(urlToken);
+    // Try path-based /join/CODE first
+    const path = window.location.pathname;
+    let urlCode = null;
+    const match = path.match(/^\/join\/([A-Za-z0-9]+)/);
+    if (match) {
+      urlCode = match[1];
+    } else {
+      // fallback to query param ?code=... for compatibility
+      const params = new URLSearchParams(window.location.search);
+      urlCode = params.get("code");
+    }
+
+    if (urlCode) {
+      setCode(urlCode);
       try {
-        sessionStorage.setItem("nexchat_token", urlToken);
+        sessionStorage.setItem("nexchat_code", urlCode);
       } catch { }
     } else {
       try {
-        const savedToken = sessionStorage.getItem("nexchat_token");
-        if (savedToken) setToken(savedToken);
+        const savedCode = sessionStorage.getItem("nexchat_code");
+        if (savedCode) setCode(savedCode);
       } catch { }
     }
   }, []);
@@ -3133,13 +3221,13 @@ const Chat = () => {
     return (
       <PrivateJoinScreen
         clerkUser={user}
-        initialToken={token}
-        onJoin={(nextToken, nextRoomId) => {
-          setToken(nextToken);
+        initialCode={code}
+        onJoin={(nextCode, nextRoomId) => {
+          setCode(nextCode);
           setRoomId(nextRoomId);
           setJoined(true);
           try {
-            sessionStorage.setItem("nexchat_token", nextToken);
+            sessionStorage.setItem("nexchat_code", nextCode);
           } catch { }
           window.history.replaceState({}, "", window.location.pathname);
         }}
@@ -3151,14 +3239,14 @@ const Chat = () => {
     <ChatScreen
       username={displayName}
       roomId={roomId}
-      token={token}
+      code={code}
       clerkUser={user}
       onLeave={() => {
         setJoined(false);
-        setToken(null);
+        setCode(null);
         setRoomId(null);
         try {
-          sessionStorage.removeItem("nexchat_token");
+          sessionStorage.removeItem("nexchat_code");
         } catch { }
       }}
     />
