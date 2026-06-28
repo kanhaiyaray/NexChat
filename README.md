@@ -41,6 +41,7 @@
 - [Engineering Challenges & Solutions](#engineering-challenges--solutions)
 - [Performance Optimizations](#performance-optimizations)
 - [What I Learned](#what-i-learned)
+- [Features Roadmap](#features-roadmap)
 
 ---
 
@@ -146,10 +147,13 @@ Read receipts use the browser's `IntersectionObserver` API instead of scroll eve
 ### 🛡️ Admin / Moderation
 | Feature | Implementation Detail |
 |---|---|
-| Owner-only delete | `currentUser` check before `Message.deleteOne()` |
-| Owner-only pin | Server-side `currentUser !== username` guard |
-| Rate limiting | `express-rate-limit` on all API routes |
-| 5MB file size limit | Multer `fileSize` constraint on avatar uploads |
+| Full admin dashboard | Stats, user/room management, audit logs, system settings |
+| User ban/unban | Server-side status toggle with audit trail |
+| Room suspend/unsuspend | Prevent joins to suspended rooms |
+| Audit logging | All admin actions logged with timestamp and details |
+| System settings | Maintenance mode, message length, image uploads, site name |
+| Data export | CSV export for users, rooms, and audit logs |
+| Real-time admin stats | Socket.IO push updates every 5 seconds |
 
 ### 📱 UI / UX
 | Feature | Implementation Detail |
@@ -161,6 +165,7 @@ Read receipts use the browser's `IntersectionObserver` API instead of scroll eve
 | Auto-scroll | `shouldAutoScrollRef` flag prevents scroll hijacking during search |
 | Context menu | Right-click message → react / edit / delete / pin |
 | Toast notifications | 3-second auto-dismiss toast system |
+| Keyboard shortcuts | `Ctrl+K` to focus search, `Esc` to close |
 
 ---
 
@@ -173,6 +178,9 @@ Read receipts use the browser's `IntersectionObserver` API instead of scroll eve
 | Vite | 7.3.3 | Build tool with Rolldown bundler (esbuild-powered) |
 | Socket.IO Client | 4.8.3 | Real-time WebSocket communication |
 | Clerk React | 5.61.6 | Authentication (Google, GitHub, Email) |
+| React Router DOM | 7.18.0 | Client-side routing |
+| React Query | 5.101.2 | Data fetching and caching |
+| Recharts | 3.9.0 | Admin dashboard charts |
 
 > **Note:** No Tailwind, no external UI library, no Redux. All 1,500+ lines of CSS are hand-written custom properties injected via a single `<style>` tag — keeping the bundle zero-dependency for styling.
 
@@ -225,12 +233,12 @@ Read receipts use the browser's `IntersectionObserver` API instead of scroll eve
 │  │  /api/search         │  │  send_image / send_voice │    │
 │  │  /api/user/profile/* │  │  message_reaction        │    │
 │  │  /api/user/sync/*    │  │  pin_message             │    │
-│  └──────────┬───────────┘  │  message_read            │    │
-│             │              └──────────┬───────────────┘    │
-│             ▼                         ▼                     │
+│  │  /api/admin/*        │  │  message_read            │    │
+│  └──────────┬───────────┘  └──────────┬───────────────┘    │
+│             │                         ▼                     │
 │  ┌──────────────────┐    ┌─────────────────────────┐       │
 │  │   Mongoose ODM   │    │  In-Memory Room State   │       │
-│  │  5 schemas       │    │  tokenRoomMap (Map)      │       │
+│  │  8 schemas       │    │  tokenRoomMap (Map)      │       │
 │  └────────┬─────────┘    │  rooms (Object)          │       │
 │           │              └─────────────────────────┘       │
 └───────────┼─────────────────────────────────────────────────┘
@@ -244,6 +252,8 @@ Read receipts use the browser's `IntersectionObserver` API instead of scroll eve
 │  privaterooms  │                │  nexchat_voice/  │
 │  userprofiles  │                │  nexchat_avatars/│
 │  readreceipts  │                └─────────────────┘
+│  adminaudits   │
+│  systemsettings│
 └────────────────┘
 ```
 
@@ -315,25 +325,35 @@ Indexes:
 ```js
 {
   roomId:          String,    // "room_<20-char-uuid>"
-  token:           String,    // 32-char UUID (the invite token)
+  code:            String,    // 6-char alphanumeric invite code
   createdBy:       String,    // Clerk user ID
   createdAt:       Date,
   pinnedMessages:  [ObjectId] // Refs to Message (max 5)
+  suspended:       Boolean
 }
 ```
 
 ### UserProfile Schema
 ```js
 {
-  clerkId:     String,   // Clerk's user ID (unique, indexed)
-  username:    String,   // Display name (text-indexed)
-  email:       String,
-  avatarUrl:   String,   // Cloudinary URL after upload
-  avatarColor: String,   // Hex color for initial avatar
-  bio:         String,   // Max 160 chars
-  status:      String,   // Max 40 chars
-  updatedAt:   Date,
-  createdAt:   Date
+  clerkId:          String,   // Clerk's user ID (unique, indexed)
+  username:         String,   // Display name (text-indexed)
+  displayName:      String,   // Custom display name
+  email:            String,
+  avatarUrl:        String,   // Cloudinary URL after upload
+  avatarColor:      String,   // Hex color for initial avatar
+  bio:              String,   // Max 160 chars
+  statusEmoji:      String,   // Status emoji
+  statusText:       String,   // Status text
+  lastSeen:         Date,
+  visibility:       enum['public','friends','private'],
+  hideOnlineStatus: Boolean,
+  hideReadReceipts: Boolean,
+  activityFeed:     [{ message, timestamp, roomId }],
+  updatedAt:        Date,
+  createdAt:        Date,
+  role:             enum['user','admin'],
+  status:           enum['active','banned']
 }
 ```
 
@@ -349,6 +369,31 @@ Indexes:
 Index: { room: 1, messageId: 1, userId: 1 } (unique)
 ```
 
+### AdminAudit Schema
+```js
+{
+  adminId:    String,
+  adminName:  String,
+  action:     String,    // ban_user, delete_room, etc.
+  target:     String,
+  targetType: enum['user','room'],
+  details:    Object,
+  timestamp:  Date
+}
+```
+
+### SystemSettings Schema
+```js
+{
+  maintenanceMode:   Boolean,
+  maxMessageLength:  Number,
+  allowImageUploads: Boolean,
+  allowNewRooms:     Boolean,
+  siteName:          String,
+  updatedAt:         Date
+}
+```
+
 ---
 
 ## API Reference
@@ -358,18 +403,48 @@ Index: { room: 1, messageId: 1, userId: 1 } (unique)
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/health` | Server health check — returns `{ status: "ok", time }` |
-| `POST` | `/api/create-chat` | Creates a new private room, returns `{ roomId, token, inviteLink }` |
-| `GET` | `/api/validate-token/:token` | Validates an invite token, returns `{ roomId, valid }` |
+| `POST` | `/api/create-chat` | Creates a new private room, returns `{ roomId, code, inviteLink }` |
+| `GET` | `/api/validate-code/:code` | Validates an invite code, returns `{ roomId, valid }` |
+| `GET` | `/api/admin/check-role` | Checks if a user is an admin (by email or clerkId) |
 
 ### Authenticated REST Endpoints
 
 | Method | Endpoint | Body / Params | Description |
 |---|---|---|---|
-| `GET` | `/api/search` | `?token&roomId&q` | Full-text search in a room (requires valid token) |
+| `GET` | `/api/search` | `?code&roomId&q` | Full-text search in a room (requires valid code) |
 | `GET` | `/api/user/profile/:clerkId` | — | Get user profile by Clerk ID |
 | `POST` | `/api/user/profile/:clerkId` | `FormData: { bio, status, avatarColor, avatar? }` | Update profile, upload avatar to Cloudinary |
 | `POST` | `/api/user/sync/:clerkId` | `{ username, email, avatarUrl }` | Create or sync user profile (called on first join) |
 | `POST` | `/api/user/profiles/batch` | `{ clerkIds: [] }` | Batch fetch profiles for room member list |
+| `POST` | `/api/webhook/clerk` | Clerk webhook payload | Sync user data from Clerk events |
+
+### Admin Endpoints (Requires `role: 'admin'`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/stats` | System statistics (users, rooms, messages, etc.) |
+| `GET` | `/api/admin/users` | List users with pagination, search, filter |
+| `PUT` | `/api/admin/users/:id/ban` | Ban a user |
+| `PUT` | `/api/admin/users/:id/unban` | Unban a user |
+| `DELETE` | `/api/admin/users/:id` | Delete a user permanently |
+| `GET` | `/api/admin/rooms` | List rooms with pagination and search |
+| `PUT` | `/api/admin/rooms/:id/suspend` | Suspend a room |
+| `PUT` | `/api/admin/rooms/:id/unsuspend` | Unsuspend a room |
+| `DELETE` | `/api/admin/rooms/:id` | Delete a room and all its messages |
+| `GET` | `/api/admin/audit` | List admin audit logs |
+| `GET` | `/api/admin/health` | System health check |
+| `GET` | `/api/admin/settings` | Get system settings |
+| `PUT` | `/api/admin/settings` | Update system settings |
+| `GET` | `/api/admin/export/users` | Export users as CSV |
+| `GET` | `/api/admin/export/rooms` | Export rooms as CSV |
+| `GET` | `/api/admin/export/audit` | Export audit logs as CSV |
+| `GET` | `/api/admin/analytics/messages` | Message volume over time |
+| `GET` | `/api/admin/analytics/users` | User statistics |
+| `GET` | `/api/admin/analytics/users-over-time` | User growth over time |
+| `GET` | `/api/admin/analytics/rooms-over-time` | Room growth over time |
+| `GET` | `/api/admin/analytics/message-types` | Distribution of message types |
+| `GET` | `/api/admin/analytics/top-users` | Most active users |
+| `GET` | `/api/admin/analytics/activity-heatmap` | Activity heatmap data |
 
 ### Request / Response Examples
 
@@ -381,12 +456,12 @@ Index: { room: 1, messageId: 1, userId: 1 } (unique)
 // Response
 {
   "roomId": "room_a1b2c3d4e5f6a7b8c9d0",
-  "token": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
-  "inviteLink": "https://nexchat-red.vercel.app?token=a1b2c3..."
+  "code": "AB7K92",
+  "inviteLink": "https://nexchat-red.vercel.app/join/AB7K92"
 }
 ```
 
-**GET `/api/search?token=xxx&roomId=yyy&q=hello`**
+**GET `/api/search?code=AB7K92&roomId=room_xxx&q=hello`**
 ```json
 {
   "roomId": "room_...",
@@ -410,20 +485,21 @@ Index: { room: 1, messageId: 1, userId: 1 } (unique)
 
 | Event | Payload | Description |
 |---|---|---|
-| `join_room` | `{ username, token, clerkId }` | Join or rejoin a private room |
+| `join_room` | `{ username, code, clerkId }` | Join or rejoin a private room |
 | `send_message` | `{ room, message, sender, timestamp, replyTo? }` | Send a text message |
 | `send_image` | `{ room, imageBase64, sender, timestamp }` | Upload and send an image |
 | `send_voice` | `{ room, audioBase64, sender, timestamp, duration }` | Upload and send a voice message |
-| `message_reaction` | `{ room, msgId, emoji, username }` | Add emoji reaction |
+| `message_reaction` | `{ room, msgId, emoji }` | Add emoji reaction |
 | `delete_message` | `{ room, msgId, username }` | Delete own message |
 | `edit_message` | `{ room, msgId, newMessage, sender }` | Edit own message (5-min window) |
 | `pin_message` | `{ room, msgId, username }` | Pin a message (max 5/room) |
 | `unpin_message` | `{ room, msgId, username }` | Remove pinned message |
 | `get_pinned_messages` | `{ room }` | Fetch all pinned messages |
 | `message_read` | `{ room, msgId, username }` | Mark message as read |
-| `load_message_context` | `{ token, messageId }` | Load ±15 messages around a search result |
+| `load_message_context` | `{ code, messageId }` | Load ±15 messages around a search result |
 | `typing_start` | `{ room, username }` | Broadcast typing indicator |
 | `typing_stop` | `{ room }` | Clear typing indicator |
+| `admin:subscribe` | — | Subscribe to real-time admin stats |
 
 ### Server → Client Events
 
@@ -445,6 +521,7 @@ Index: { room: 1, messageId: 1, userId: 1 } (unique)
 | `receipts_updated` | `{ msgId, readBy[], count }` | Read receipt updated |
 | `user_profile_updated` | `UserProfile` | Profile changed (avatar, status, etc.) |
 | `join_error` | `{ message }` | Invalid token or server error |
+| `admin:stats` | `{ totalUsers, onlineUsers, totalRooms, ... }` | Real-time admin stats (every 5s) |
 
 ---
 
@@ -453,7 +530,7 @@ Index: { room: 1, messageId: 1, userId: 1 } (unique)
 | Concern | Approach |
 |---|---|
 | **Authentication** | Clerk handles OAuth + session management; JWT tokens never touch the Express layer |
-| **Room access control** | UUID token = permission. No token = no join. Validated server-side on every `join_room` |
+| **Room access control** | UUID code = permission. No code = no join. Validated server-side on every `join_room` |
 | **Message ownership** | Every `delete_message` and `edit_message` checks `currentUser === sender` in socket closure |
 | **File upload validation** | Multer `fileFilter` rejects non-image MIME types; 5MB size limit enforced |
 | **CORS** | Strict origin whitelist: `localhost:5173/74/75` + `CLIENT_ORIGIN` env var only |
@@ -461,6 +538,8 @@ Index: { room: 1, messageId: 1, userId: 1 } (unique)
 | **Socket buffer limit** | `maxHttpBufferSize: 10MB` — prevents oversized base64 payloads from crashing the server |
 | **Cloudinary secrets** | API credentials never exposed to client; all uploads proxied through server |
 | **Profile API** | Relative URL bug fixed — all profile calls use `VITE_SOCKET_URL` as base, not relative paths |
+| **Admin protection** | All admin routes require `role: 'admin'` check via `isAdmin` middleware |
+| **Audit logging** | All admin actions logged with timestamp and admin identity |
 
 ---
 
@@ -480,7 +559,22 @@ nexchat/
 │   │   │   ├── ProfileModal.jsx     # Edit profile modal (bio, status, avatar)
 │   │   │   ├── VoiceRecorder.jsx    # MediaRecorder → base64 pipeline
 │   │   │   └── VoicePlayer.jsx      # Custom audio player with seek bar
-│   │   ├── App.jsx                  # Single-component wrapper
+│   │   ├── pages/
+│   │   │   └── admin/               # Admin dashboard pages
+│   │   │       ├── AdminLayout.jsx  # Layout with sidebar
+│   │   │       ├── Dashboard.jsx    # Stats overview
+│   │   │       ├── Users.jsx        # User management
+│   │   │       ├── Rooms.jsx        # Room management
+│   │   │       ├── SystemHealth.jsx # Health monitoring
+│   │   │       ├── AuditLog.jsx     # Admin audit logs
+│   │   │       ├── Analytics.jsx    # Advanced analytics with charts
+│   │   │       └── Profile.jsx      # Profile & system settings
+│   │   ├── api/
+│   │   │   └── admin.js             # Admin API client functions
+│   │   ├── hooks/
+│   │   │   └── useAdminSocket.js    # Admin real-time stats socket hook
+│   │   ├── App.jsx                  # Routes configuration
+│   │   ├── AdminRoute.jsx           # Admin route guard
 │   │   ├── main.jsx                 # ClerkProvider + React 19 root
 │   │   └── index.css                # CSS reset only (all styles in Chat.jsx)
 │   ├── index.html
@@ -489,12 +583,15 @@ nexchat/
 │   └── package.json
 │
 ├── server/
-│   └── server.js                    # Entire backend in one file (~900 lines)
-│                                    #   - 5 Mongoose schemas
-│                                    #   - 10+ REST endpoints
-│                                    #   - 15+ Socket.IO event handlers
+│   └── server.js                    # Entire backend in one file (~1,500 lines)
+│                                    #   - 8 Mongoose schemas
+│                                    #   - 25+ REST endpoints
+│                                    #   - 20+ Socket.IO event handlers
 │                                    #   - Cloudinary upload logic
 │                                    #   - In-memory room state
+│                                    #   - Admin middleware & audit
+│                                    #   - Analytics aggregation pipelines
+│
 └── README.md
 ```
 
@@ -533,7 +630,7 @@ PORT=1000
 CLIENT_ORIGIN=http://localhost:5173
 
 # MongoDB Atlas
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/nexchat
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/dbname
 
 # Cloudinary (get from cloudinary.com → Dashboard)
 CLOUDINARY_CLOUD_NAME=your_cloud_name
@@ -625,7 +722,6 @@ When the server starts, you should see:
 3. Add environment variables:
    - `VITE_CLERK_PUBLISHABLE_KEY`
    - `VITE_SOCKET_URL` → your Render server URL
-
 4. The `client/vercel.json` handles SPA routing:
    ```json
    { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
@@ -636,6 +732,7 @@ When the server starts, you should see:
 1. Go to [clerk.com](https://clerk.com) → Your app → Settings → Domains
 2. Add your Vercel URL as an **Allowed Origin**
 3. Enable Google and/or GitHub OAuth providers in the Clerk dashboard
+4. Set up a webhook endpoint at `/api/webhook/clerk` for user sync
 
 ### MongoDB Atlas Configuration
 
@@ -692,13 +789,19 @@ rooms[room].push({ id, username, clerkId });
 
 **Solution:** Cloudinary's `resource_type: "auto"` with `format: "mp3"` automatically transcodes WebM to MP3 on upload. The resulting URL is a standard MP3 that plays on all browsers via HTML5 `<audio>`.
 
+### Challenge 6: Admin Role Check Without Authentication
+
+**Problem:** The admin route protection needed to verify admin status from Clerk data without forcing a full auth flow on every page load.
+
+**Solution:** Created a public `/api/admin/check-role` endpoint that accepts either `email` or `clerkId` query parameters and checks the `UserProfile` collection for `role: 'admin'`. The frontend `AdminRoute` component calls this endpoint on mount and gates the dashboard render on the result.
+
 ---
 
 ## Performance Optimizations
 
 | Optimization | Impact |
 |---|---|
-| In-memory `tokenRoomMap` | Token lookups skip MongoDB for active sessions — O(1) instead of O(log n) DB query |
+| In-memory `codeRoomMap` | Code lookups skip MongoDB for active sessions — O(1) instead of O(log n) DB query |
 | Compound index `{ room: 1, timestamp: -1 }` | History queries scan only the relevant room's messages |
 | Text index on `message` field | Full-text search uses MongoDB's inverted index, not a collection scan |
 | `limit(50)` on history load | Prevents loading thousands of messages into memory on join |
@@ -706,13 +809,15 @@ rooms[room].push({ id, username, clerkId });
 | Cloudinary auto quality/format | `quality: "auto", fetch_format: "auto"` reduces image payload by 40-70% |
 | CSS via JS injection | Zero HTTP requests for styles; no render-blocking stylesheet |
 | `IntersectionObserver` for receipts | Passive, battery-efficient API — no scroll event listeners |
+| Socket.IO compression | `perMessageDeflate: true` reduces WebSocket payload size |
+| Admin stats via socket | Real-time updates pushed every 5s without polling the REST API |
 
 ---
 
 ## What I Learned
 
 ### Real-Time Systems Are Hard
-The hardest part wasn't any single feature — it was **stitching Clerk auth states, Socket.IO room lifecycle, and MongoDB async flows together without creating spaghetti**. A seemingly simple action like "user joins room" involves: validate token (async DB lookup), create/sync profile (async DB write), load history (async DB query), emit to room members (sync socket), update in-memory state. Every step can fail independently.
+The hardest part wasn't any single feature — it was **stitching Clerk auth states, Socket.IO room lifecycle, and MongoDB async flows together without creating spaghetti**. A seemingly simple action like "user joins room" involves: validate code (async DB lookup), create/sync profile (async DB write), load history (async DB query), emit to room members (sync socket), update in-memory state. Every step can fail independently.
 
 ### State Consistency Is the Real Problem
 Most real-time bugs aren't about WebSockets — they're about **state consistency across async boundaries**. The message buffer, the `shouldAutoScrollRef`, the `historyLoaded` flag — these all exist to answer the same question: "what's the ground truth right now, and how do I reconcile it with what just arrived?"
@@ -724,14 +829,22 @@ Shipping the features took 20% of the time. The other 80% was:
 - Ghost users after reconnect (username-based filter on join)
 - Cross-origin cookies breaking OAuth on split deployment
 - Relative URL bug causing profile uploads to silently fail in production
+- Admin role verification without breaking the auth flow
 
 These aren't in any tutorial. They're the engineering.
+
+### Admin Dashboard Complexity
+Building a full admin panel with real-time stats, user/room management, audit logging, and analytics taught me the importance of:
+- Separation of concerns between admin routes and main app
+- Consistent audit trails for accountability
+- Data aggregation pipelines for analytics
+- CSV export for operational data
 
 ---
 
 ## Features Roadmap
 
-- [ ] End-to-end encryption (WebCrypto API, similar to SecureDrop project)
+- [ ] End-to-end encryption (WebCrypto API)
 - [ ] Redis pub/sub adapter for Socket.IO horizontal scaling
 - [ ] Message threads / reply chains
 - [ ] File sharing (PDFs, docs) via Cloudinary raw uploads
@@ -740,12 +853,15 @@ These aren't in any tutorial. They're the engineering.
 - [ ] Docker Compose setup for one-command local development
 - [ ] Jest unit tests for socket event handlers
 - [ ] GitHub Actions CI pipeline
+- [ ] Push notifications (Web Push API)
+- [ ] Message search inside admin dashboard
+- [ ] Export chat history as JSON
 
 ---
 
 ## License
 
-This project is licensed under the **MIT License** — free for personal and commercial use.
+This project is licensed under the **MIT License** — for personal and commercial use.
 
 ---
 
