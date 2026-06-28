@@ -1584,6 +1584,72 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
         min-width: 55px;
       }
     }
+
+    /* ─── Admin Table Styles ─────────────────────────────────────────────────── */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      color: #e2e8f0;
+      background: transparent;
+    }
+
+    .admin-table thead {
+      border-bottom: 1px solid rgba(0,229,255,0.12);
+    }
+
+    .admin-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+
+    .admin-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .admin-table tbody tr:hover {
+      background: rgba(0,229,255,0.04);
+      transition: background 0.15s;
+    }
+
+    .admin-table .action-btn {
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: none;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-right: 6px;
+      background: rgba(255,255,255,0.06);
+      color: #94a3b8;
+    }
+
+    .admin-table .action-btn:hover {
+      background: rgba(0,229,255,0.12);
+      color: #00e5ff;
+    }
+
+    .admin-table .action-btn.danger {
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.2);
+    }
+
+    .admin-table .action-btn.danger:hover {
+      background: rgba(248,113,113,0.12);
+      border-color: rgba(248,113,113,0.4);
+    }
+
+    /* ─── Nav active style for admin ────────────────────────────────────────── */
+    .nav-active {
+      color: #00e5ff !important;
+      background: rgba(0,229,255,0.08) !important;
+    }
   `;
   document.head.appendChild(styleSheet);
 }
@@ -2112,7 +2178,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
       room: roomId,
       audioBase64: audioBase64,
       sender: username,
-      clerkId: clerkUser?.id,          // ← new
+      clerkId: clerkUser?.id,
       timestamp: new Date().toISOString(),
       duration: duration,
     });
@@ -2396,7 +2462,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
       room: roomId,
       message: trimmed,
       sender: username,
-      clerkId: clerkUser?.id,          // ← new
+      clerkId: clerkUser?.id,
       timestamp: new Date().toISOString(),
     });
     setMessage("");
@@ -2414,7 +2480,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
         room: roomId,
         imageBase64: reader.result,
         sender: username,
-        clerkId: clerkUser?.id,          // ← new
+        clerkId: clerkUser?.id,
         timestamp: new Date().toISOString(),
       });
       setImage(null);

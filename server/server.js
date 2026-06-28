@@ -40,7 +40,7 @@ const connectDB = async () => {
   }
 };
 
-// ─── Message Schema (with replyTo and voice support) ───────────────────────────
+// ─── Message Schema ───────────────────────────────────────────────────────────
 const messageSchema = new mongoose.Schema({
   room: { type: String, required: true, index: true },
   sender: { type: String, required: true },
@@ -74,17 +74,18 @@ const readReceiptSchema = new mongoose.Schema({
 readReceiptSchema.index({ room: 1, messageId: 1, userId: 1 }, { unique: true });
 const ReadReceipt = mongoose.models.ReadReceipt || mongoose.model("ReadReceipt", readReceiptSchema);
 
-// ─── PrivateRoom Schema (with pinnedMessages) ─────────────────────────────────
+// ─── PrivateRoom Schema ───────────────────────────────────────────────────────
 const privateRoomSchema = new mongoose.Schema({
   roomId: { type: String, required: true, unique: true },
-  code: { type: String, required: true, unique: true },  // short invite code
+  code: { type: String, required: true, unique: true },
   createdBy: { type: String, default: "anonymous" },
   createdAt: { type: Date, default: Date.now },
-  pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }]
+  pinnedMessages: [{ type: mongoose.Schema.Types.ObjectId, ref: "Message" }],
+  suspended: { type: Boolean, default: false }
 });
 const PrivateRoom = mongoose.models.PrivateRoom || mongoose.model("PrivateRoom", privateRoomSchema);
 
-// ─── UserProfile Schema (UPDATED) ────────────────────────────────────────────
+// ─── UserProfile Schema ──────────────────────────────────────────────────────
 const userProfileSchema = new mongoose.Schema({
   clerkId: { type: String, required: true, unique: true, index: true },
   username: { type: String, required: true, unique: true },
@@ -105,11 +106,36 @@ const userProfileSchema = new mongoose.Schema({
     roomId: String
   }], default: [] },
   updatedAt: { type: Date, default: Date.now },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  status: { type: String, enum: ['active', 'banned'], default: 'active' }
 });
 
 userProfileSchema.index({ username: "text" });
 const UserProfile = mongoose.models.UserProfile || mongoose.model("UserProfile", userProfileSchema);
+
+// ─── ADMIN ─── AdminAudit Schema ──────────────────────────────────────────────
+const adminAuditSchema = new mongoose.Schema({
+  adminId: String,
+  adminName: String,
+  action: String,
+  target: String,
+  targetType: { type: String, enum: ['user', 'room'] },
+  details: Object,
+  timestamp: { type: Date, default: Date.now }
+});
+const AdminAudit = mongoose.models.AdminAudit || mongoose.model('AdminAudit', adminAuditSchema);
+
+// ─── ADMIN ─── System Settings Schema ────────────────────────────────────────
+const systemSettingsSchema = new mongoose.Schema({
+  maintenanceMode: { type: Boolean, default: false },
+  maxMessageLength: { type: Number, default: 5000 },
+  allowImageUploads: { type: Boolean, default: true },
+  allowNewRooms: { type: Boolean, default: true },
+  siteName: { type: String, default: 'NexChat' },
+  updatedAt: { type: Date, default: Date.now }
+});
+const SystemSettings = mongoose.models.SystemSettings || mongoose.model('SystemSettings', systemSettingsSchema);
 
 // ─── Helper functions for users ──────────────────────────────────────────────
 async function getUserProfile(clerkId) {
@@ -117,7 +143,6 @@ async function getUserProfile(clerkId) {
   return await UserProfile.findOne({ clerkId }).lean();
 }
 
-// UPDATED getOrCreateUserProfile with new fields
 async function getOrCreateUserProfile(clerkId, username, email) {
   if (mongoose.connection.readyState !== 1) return null;
 
@@ -141,12 +166,12 @@ async function getOrCreateUserProfile(clerkId, username, email) {
       visibility: 'public',
       hideOnlineStatus: false,
       hideReadReceipts: false,
+      role: 'user',
+      status: 'active'
     });
   } else {
-    // Update username if changed
     if (profile.username !== username) {
       profile.username = username;
-      // If displayName is empty or equals old username, update it
       if (!profile.displayName || profile.displayName === profile.username) {
         profile.displayName = username;
       }
@@ -161,7 +186,7 @@ async function getOrCreateUserProfile(clerkId, username, email) {
 
 // ─── Short code generator ──────────────────────────────────────────────────
 async function generateShortCode(length = 6) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/I/l
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
   let exists = true;
   while (exists) {
@@ -169,7 +194,6 @@ async function generateShortCode(length = 6) {
     for (let i = 0; i < length; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    // Check uniqueness in DB
     const found = await PrivateRoom.findOne({ code });
     if (!found) exists = false;
   }
@@ -251,6 +275,40 @@ async function fetchMessageContext(roomId, messageId, windowSize = 15) {
   };
 }
 
+// ─── ADMIN ─── Admin middleware & logging ────────────────────────────────────
+async function isAdmin(req, res, next) {
+  const clerkId = req.headers['x-clerk-id'] || req.query.clerkId;
+  if (!clerkId) {
+    return res.status(401).json({ error: 'Unauthorized – no clerkId' });
+  }
+  const profile = await UserProfile.findOne({ clerkId });
+  if (!profile || profile.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden – admin access required' });
+  }
+  req.admin = profile;
+  next();
+}
+
+async function logAdminAction(adminId, adminName, action, target, targetType, details = {}) {
+  try {
+    await AdminAudit.create({ adminId, adminName, action, target, targetType, details });
+  } catch (err) {
+    console.warn('Audit log failed:', err.message);
+  }
+}
+
+async function fetchStats() {
+  const totalUsers = await UserProfile.countDocuments();
+  const onlineUsers = Object.values(rooms).flat().length;
+  const totalRooms = await PrivateRoom.countDocuments();
+  const activeRooms = Object.keys(rooms).filter(roomId => rooms[roomId]?.length >= 2).length;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const messagesToday = await Message.countDocuments({ timestamp: { $gte: today } });
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  const newUsers24h = await UserProfile.countDocuments({ createdAt: { $gte: yesterday } });
+  return { totalUsers, onlineUsers, totalRooms, activeRooms, messagesToday, newUsers24h };
+}
+
 // ─── Express + Socket.IO ──────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
@@ -279,6 +337,9 @@ app.use(express.json());
 
 app.get("/health", (_, res) => res.json({ status: "ok", time: new Date() }));
 
+// ─── API Routes ───────────────────────────────────────────────────────────────
+
+// Create chat
 app.post("/api/create-chat", async (req, res) => {
   try {
     const roomId = `room_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -304,6 +365,7 @@ app.post("/api/create-chat", async (req, res) => {
   }
 });
 
+// Validate code
 app.get("/api/validate-code/:code", async (req, res) => {
   try {
     const { code } = req.params;
@@ -323,6 +385,7 @@ app.get("/api/validate-code/:code", async (req, res) => {
   }
 });
 
+// Search messages
 app.get("/api/search", async (req, res) => {
   try {
     const code = String(req.query.code || "");
@@ -402,11 +465,10 @@ app.post("/api/webhook/clerk", express.json(), async (req, res) => {
   }
 });
 
-// UPDATED GET /api/user/profile/:clerkId with visibility control
 app.get("/api/user/profile/:clerkId", async (req, res) => {
   try {
     const { clerkId } = req.params;
-    const requesterId = req.query.requesterId; // new
+    const requesterId = req.query.requesterId;
     if (!clerkId) {
       return res.status(400).json({ error: "clerkId required" });
     }
@@ -418,7 +480,6 @@ app.get("/api/user/profile/:clerkId", async (req, res) => {
 
     const isOwner = requesterId === clerkId;
 
-    // Base response – always include public fields
     const response = {
       clerkId: profile.clerkId,
       username: profile.username,
@@ -429,7 +490,6 @@ app.get("/api/user/profile/:clerkId", async (req, res) => {
       statusText: profile.statusText,
     };
 
-    // Determine visibility of extra fields
     const canSeeFull = isOwner || profile.visibility === 'public' || profile.visibility === 'friends';
     if (canSeeFull) {
       response.bio = profile.bio;
@@ -444,7 +504,6 @@ app.get("/api/user/profile/:clerkId", async (req, res) => {
       response.lastSeen = null;
     }
 
-    // Only return activityFeed if owner
     if (isOwner) {
       response.activityFeed = profile.activityFeed || [];
     }
@@ -468,7 +527,6 @@ const upload = multer({
   }
 });
 
-// UPDATED POST /api/user/profile/:clerkId with new fields
 app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res) => {
   try {
     const { clerkId } = req.params;
@@ -495,10 +553,9 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
 
     const updateData = {};
     if (bio !== undefined) updateData.bio = bio?.slice(0, 160);
-    if (status !== undefined) updateData.status = status?.slice(0, 40); // legacy field, keep for compatibility
+    if (status !== undefined) updateData.status = status?.slice(0, 40);
     if (avatarColor !== undefined) updateData.avatarColor = avatarColor;
     if (avatarUrl !== null) updateData.avatarUrl = avatarUrl;
-    // New fields
     if (displayName !== undefined) updateData.displayName = displayName.trim().slice(0, 40);
     if (statusEmoji !== undefined) updateData.statusEmoji = statusEmoji;
     if (statusText !== undefined) updateData.statusText = statusText.trim().slice(0, 40);
@@ -513,7 +570,6 @@ app.post("/api/user/profile/:clerkId", upload.single("avatar"), async (req, res)
       { new: true, upsert: true }
     );
 
-    // Broadcast profile update to all rooms where the user is present
     const userUpdate = {
       clerkId,
       username: profile.username,
@@ -603,6 +659,8 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
         visibility: 'public',
         hideOnlineStatus: false,
         hideReadReceipts: false,
+        role: 'user',
+        status: 'active'
       });
     } else {
       let needsUpdate = false;
@@ -634,15 +692,509 @@ app.post("/api/user/sync/:clerkId", express.json(), async (req, res) => {
   }
 });
 
-// ─── In‑memory room user tracker (UPDATED addUser) ──────────────────────────
+// ─── ADMIN ─── Admin API endpoints ──────────────────────────────────────────
+
+// ✅ NEW – Check admin role from database (public, no isAdmin required)
+app.get('/api/admin/check-role', async (req, res) => {
+  console.log("🔍 Incoming query params:", req.query);
+  console.log("🔍 Incoming headers:", req.headers);
+
+  const email = req.query.email || req.headers['x-user-email'];
+  const clerkId = req.query.clerkId || req.headers['x-clerk-id'];
+
+  console.log("📧 Email from request:", email);
+  console.log("🆔 ClerkId from request:", clerkId);
+
+  let query = {};
+  if (email) {
+    query = { email };
+  } else if (clerkId) {
+    query = { clerkId };
+  } else {
+    console.log("❌ No email or clerkId found");
+    return res.status(401).json({ error: 'Missing email or clerkId' });
+  }
+
+  console.log("🔎 MongoDB query:", query);
+
+  try {
+    const profile = await UserProfile.findOne(query);
+    console.log("📄 Profile found:", profile);
+
+    const isAdmin = profile?.role === 'admin';
+    console.log("✅ isAdmin:", isAdmin);
+
+    res.json({ isAdmin });
+  } catch (err) {
+    console.error("❌ Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/stats
+app.get('/api/admin/stats', isAdmin, async (req, res) => {
+  try {
+    const totalUsers = await UserProfile.countDocuments();
+    const onlineUsers = Object.values(rooms).flat().length;
+    const totalRooms = await PrivateRoom.countDocuments();
+    const activeRooms = Object.keys(rooms).filter(roomId => rooms[roomId]?.length >= 2).length;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const messagesToday = await Message.countDocuments({ timestamp: { $gte: today } });
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const newUsers24h = await UserProfile.countDocuments({ createdAt: { $gte: yesterday } });
+
+    res.json({
+      totalUsers,
+      onlineUsers,
+      totalRooms,
+      activeRooms,
+      messagesToday,
+      newUsers24h,
+      serverUptime: process.uptime(),
+      mongoStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      cloudinaryStatus: process.env.CLOUDINARY_CLOUD_NAME ? 'configured' : 'missing',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/users
+app.get('/api/admin/users', isAdmin, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = '', filter = 'all' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    let query = {};
+    if (search) {
+      query.$or = [
+        { username: { $regex: search, $options: 'i' } },
+        { displayName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (filter === 'banned') query.status = 'banned';
+    else if (filter === 'active') query.status = 'active';
+
+    const [users, total] = await Promise.all([
+      UserProfile.find(query).skip(skip).limit(parseInt(limit)).sort({ createdAt: -1 }).lean(),
+      UserProfile.countDocuments(query)
+    ]);
+
+    const onlineUsernames = new Set();
+    Object.values(rooms).forEach(roomUsers => roomUsers.forEach(u => onlineUsernames.add(u.username)));
+    const enriched = users.map(u => ({
+      ...u,
+      isOnline: onlineUsernames.has(u.username)
+    }));
+
+    res.json({ users: enriched, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/users/:id/ban
+app.put('/api/admin/users/:id/ban', isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await UserProfile.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.status = 'banned';
+    await user.save();
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'ban_user', user.username, 'user', { userId: user._id });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/users/:id/unban
+app.put('/api/admin/users/:id/unban', isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await UserProfile.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.status = 'active';
+    await user.save();
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'unban_user', user.username, 'user', { userId: user._id });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/users/:id
+app.delete('/api/admin/users/:id', isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await UserProfile.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await UserProfile.deleteOne({ _id: id });
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'delete_user', user.username, 'user', { userId: user._id });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/rooms
+app.get('/api/admin/rooms', isAdmin, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    let query = {};
+    if (search) {
+      query.$or = [
+        { roomId: { $regex: search, $options: 'i' } },
+        { code: { $regex: search, $options: 'i' } }
+      ];
+    }
+    const roomsData = await PrivateRoom.find(query).skip(skip).limit(parseInt(limit)).sort({ createdAt: -1 }).lean();
+    const total = await PrivateRoom.countDocuments(query);
+
+    const enriched = await Promise.all(roomsData.map(async (r) => {
+      const members = rooms[r.roomId] || [];
+      const lastMsg = await Message.findOne({ room: r.roomId }).sort({ timestamp: -1 }).lean();
+      return {
+        ...r,
+        memberCount: members.length,
+        lastActivity: lastMsg ? lastMsg.timestamp : r.createdAt
+      };
+    }));
+
+    res.json({ rooms: enriched, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/rooms/:id
+app.delete('/api/admin/rooms/:id', isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const room = await PrivateRoom.findById(id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    await Message.deleteMany({ room: room.roomId });
+    await PrivateRoom.deleteOne({ _id: id });
+    codeRoomMap.delete(room.code);
+    delete rooms[room.roomId];
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'delete_room', room.roomId, 'room', { code: room.code });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/rooms/:id/suspend
+app.put('/api/admin/rooms/:id/suspend', isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const room = await PrivateRoom.findById(id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.suspended = true;
+    await room.save();
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'suspend_room', room.roomId, 'room', { code: room.code });
+    res.json({ success: true, room });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/rooms/:id/unsuspend
+app.put('/api/admin/rooms/:id/unsuspend', isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const room = await PrivateRoom.findById(id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    room.suspended = false;
+    await room.save();
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'unsuspend_room', room.roomId, 'room', { code: room.code });
+    res.json({ success: true, room });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/audit
+app.get('/api/admin/audit', isAdmin, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    let query = {};
+    if (search) {
+      query.$or = [
+        { adminName: { $regex: search, $options: 'i' } },
+        { action: { $regex: search, $options: 'i' } },
+        { target: { $regex: search, $options: 'i' } }
+      ];
+    }
+    const logs = await AdminAudit.find(query).skip(skip).limit(parseInt(limit)).sort({ timestamp: -1 }).lean();
+    const total = await AdminAudit.countDocuments(query);
+    res.json({ logs, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/health
+app.get('/api/admin/health', isAdmin, async (req, res) => {
+  try {
+    const mongoState = mongoose.connection.readyState;
+    const mongoStatus = mongoState === 1 ? 'connected' : mongoState === 0 ? 'disconnected' : 'connecting';
+    const cloudinaryOk = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY);
+    res.json({
+      serverUptime: process.uptime(),
+      mongo: mongoStatus,
+      cloudinary: cloudinaryOk ? 'configured' : 'missing',
+      socketConnections: io.engine.clientsCount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Analytics Endpoints (Base + Advanced) ──────────────────────────────────
+
+// GET /api/admin/analytics/messages
+app.get('/api/admin/analytics/messages', isAdmin, async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+    const pipeline = [
+      { $match: { timestamp: { $gte: startDate } } },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+        count: { $sum: 1 }
+      }},
+      { $sort: { _id: 1 } }
+    ];
+    const results = await Message.aggregate(pipeline);
+    res.json({ data: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/analytics/users
+app.get('/api/admin/analytics/users', isAdmin, async (req, res) => {
+  try {
+    const total = await UserProfile.countDocuments();
+    const active = await UserProfile.countDocuments({ status: 'active' });
+    const banned = await UserProfile.countDocuments({ status: 'banned' });
+    const online = Object.values(rooms).flat().length;
+    res.json({ total, active, banned, online });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Advanced Analytics Endpoints ───────────────────────────────────────────
+
+// GET /api/admin/analytics/users-over-time
+app.get('/api/admin/analytics/users-over-time', isAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const pipeline = [
+      { $match: { createdAt: { $gte: startDate } } },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        count: { $sum: 1 }
+      }},
+      { $sort: { _id: 1 } }
+    ];
+    const results = await UserProfile.aggregate(pipeline);
+    res.json({ data: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/analytics/rooms-over-time
+app.get('/api/admin/analytics/rooms-over-time', isAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const pipeline = [
+      { $match: { createdAt: { $gte: startDate } } },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        count: { $sum: 1 }
+      }},
+      { $sort: { _id: 1 } }
+    ];
+    const results = await PrivateRoom.aggregate(pipeline);
+    res.json({ data: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/analytics/message-types
+app.get('/api/admin/analytics/message-types', isAdmin, async (req, res) => {
+  try {
+    const types = await Message.aggregate([
+      { $group: { _id: '$type', count: { $sum: 1 } } }
+    ]);
+    const total = types.reduce((sum, t) => sum + t.count, 0);
+    const data = types.map(t => ({ name: t._id, value: t.count, percentage: total ? ((t.count / total) * 100).toFixed(1) : 0 }));
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/analytics/top-users
+app.get('/api/admin/analytics/top-users', isAdmin, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const topUsers = await Message.aggregate([
+      { $group: { _id: '$sender', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit }
+    ]);
+    const enriched = await Promise.all(topUsers.map(async (u) => {
+      const profile = await UserProfile.findOne({ username: u._id }).lean();
+      return {
+        username: u._id,
+        messageCount: u.count,
+        lastSeen: profile?.lastSeen || null,
+        status: profile?.status || 'active'
+      };
+    }));
+    res.json({ topUsers: enriched });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/analytics/activity-heatmap
+app.get('/api/admin/analytics/activity-heatmap', isAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const pipeline = [
+      { $match: { timestamp: { $gte: startDate } } },
+      { $project: {
+        hour: { $hour: '$timestamp' },
+        day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }
+      }},
+      { $group: {
+        _id: { day: '$day', hour: '$hour' },
+        count: { $sum: 1 }
+      }},
+      { $sort: { '_id.day': 1, '_id.hour': 1 } }
+    ];
+    const results = await Message.aggregate(pipeline);
+    const heatmapData = results.map(r => ({
+      day: r._id.day,
+      hour: r._id.hour,
+      count: r.count
+    }));
+    res.json({ data: heatmapData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── ADMIN ─── System Settings Endpoints ──────────────────────────────────────
+
+// GET /api/admin/settings
+app.get('/api/admin/settings', isAdmin, async (req, res) => {
+  try {
+    const settings = await SystemSettings.findOne().lean();
+    res.json(settings || {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/settings
+app.put('/api/admin/settings', isAdmin, async (req, res) => {
+  try {
+    const updates = req.body;
+    const allowed = ['maintenanceMode', 'maxMessageLength', 'allowImageUploads', 'allowNewRooms', 'siteName'];
+    const filtered = Object.keys(updates)
+      .filter(k => allowed.includes(k))
+      .reduce((obj, k) => { obj[k] = updates[k]; return obj; }, {});
+    filtered.updatedAt = new Date();
+    const settings = await SystemSettings.findOneAndUpdate(
+      {},
+      { $set: filtered },
+      { new: true, upsert: true }
+    );
+    await logAdminAction(req.admin.clerkId, req.admin.username, 'update_settings', 'system', 'system', { updates: filtered });
+    res.json({ success: true, settings });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── ADMIN ─── Export Endpoints ────────────────────────────────────────────
+
+// Helper to convert array to CSV
+function arrayToCSV(data, headers) {
+  const headerRow = headers.join(',');
+  const rows = data.map(item => headers.map(h => JSON.stringify(item[h] || '')).join(','));
+  return [headerRow, ...rows].join('\n');
+}
+
+// GET /api/admin/export/users
+app.get('/api/admin/export/users', isAdmin, async (req, res) => {
+  try {
+    const users = await UserProfile.find({}, 'username displayName email status role createdAt lastSeen').lean();
+    const csv = arrayToCSV(users, ['username', 'displayName', 'email', 'status', 'role', 'createdAt', 'lastSeen']);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=users.csv');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/export/rooms
+app.get('/api/admin/export/rooms', isAdmin, async (req, res) => {
+  try {
+    const roomsData = await PrivateRoom.find({}, 'roomId code createdBy createdAt suspended').lean();
+    const enriched = await Promise.all(roomsData.map(async (r) => {
+      const count = await Message.countDocuments({ room: r.roomId });
+      return { ...r, messageCount: count };
+    }));
+    const csv = arrayToCSV(enriched, ['roomId', 'code', 'createdBy', 'createdAt', 'suspended', 'messageCount']);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=rooms.csv');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/export/audit
+app.get('/api/admin/export/audit', isAdmin, async (req, res) => {
+  try {
+    const logs = await AdminAudit.find({}, 'adminName action target details timestamp').lean();
+    const csv = arrayToCSV(logs, ['adminName', 'action', 'target', 'details', 'timestamp']);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=audit.csv');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── In‑memory room user tracker ─────────────────────────────────────────────
 const rooms = {};
 
 const getUsers = (room) => rooms[room] || [];
 
-// UPDATED addUser to accept full user data object
 const addUser = (room, id, userData) => {
   if (!rooms[room]) rooms[room] = [];
-  // remove old entry with same username
   rooms[room] = rooms[room].filter(u => u.username !== userData.username);
   rooms[room].push({ id, ...userData });
 };
@@ -684,6 +1236,12 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const privateRoom = await PrivateRoom.findOne({ roomId: actualRoom });
+    if (privateRoom && privateRoom.suspended) {
+      socket.emit('join_error', { message: 'This room has been suspended by an admin.' });
+      return;
+    }
+
     if (currentRoom) {
       socket.leave(currentRoom);
       removeUser(currentRoom, socket.id);
@@ -693,7 +1251,6 @@ io.on("connection", (socket) => {
     currentRoom = actualRoom;
     currentUser = username;
 
-    // ── Get or create profile and add user with full data ──
     const profile = await getOrCreateUserProfile(clerkId, username, "");
     if (profile) {
       const userData = {
@@ -705,15 +1262,12 @@ io.on("connection", (socket) => {
         hideOnlineStatus: profile.hideOnlineStatus,
         avatarUrl: profile.avatarUrl,
         avatarColor: profile.avatarColor,
-        // lastSeen will be sent separately, but we store it anyway
         lastSeen: profile.lastSeen,
       };
       addUser(actualRoom, socket.id, userData);
-      // update lastSeen
       profile.lastSeen = new Date();
       await profile.save();
     } else {
-      // fallback: add with minimal data
       addUser(actualRoom, socket.id, { username, clerkId, displayName: username });
     }
 
@@ -744,7 +1298,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Text Message (UPDATED to update activity feed) ──────────────────────
+  // ── Text Message ──────────────────────────────────────────────────────────
   socket.on("send_message", async (data) => {
     let savedMsg = null;
     if (mongoose.connection.readyState === 1) {
@@ -765,7 +1319,6 @@ io.on("connection", (socket) => {
           { upsert: true }
         );
 
-        // Update activity feed and lastSeen for the sender
         if (data.clerkId) {
           await UserProfile.updateOne(
             { clerkId: data.clerkId },
@@ -836,7 +1389,6 @@ io.on("connection", (socket) => {
           editedAt: null,
         }).save();
 
-        // Update activity feed
         if (clerkId) {
           await UserProfile.updateOne(
             { clerkId },
@@ -1099,7 +1651,7 @@ io.on("connection", (socket) => {
     socket.to(room).emit("user_typing", { username: currentUser, isTyping: false });
   });
 
-  // ─── Pin a message (max 5 per room) ─────────────────────────────────────────
+  // ─── Pin a message ─────────────────────────────────────────────────────────
   socket.on("pin_message", async ({ room, msgId, username }) => {
     if (!currentRoom || currentUser !== username) {
       socket.emit("pin_error", { message: "Not authorized" });
@@ -1155,7 +1707,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Get all pinned messages for a room ─────────────────────────────────────
+  // ─── Get all pinned messages ───────────────────────────────────────────────
   socket.on("get_pinned_messages", async ({ room }) => {
     try {
       const privateRoom = await PrivateRoom.findOne({ roomId: room }).populate("pinnedMessages");
@@ -1171,14 +1723,12 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Read Receipts (UPDATED to respect hideReadReceipts) ──────────────────
+  // ─── Read Receipts ──────────────────────────────────────────────────────────
   socket.on("message_read", async ({ room, msgId, username }) => {
     if (!room || !msgId || !username) return;
     try {
-      // Check if user wants to hide read receipts
       const profile = await UserProfile.findOne({ username });
       if (profile && profile.hideReadReceipts) {
-        // Still record the receipt for internal use but don't emit
         await ReadReceipt.findOneAndUpdate(
           { room, messageId: msgId, userId: username },
           { readAt: new Date() },
@@ -1187,7 +1737,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Otherwise, record and emit
       await ReadReceipt.findOneAndUpdate(
         { room, messageId: msgId, userId: username },
         { readAt: new Date() },
@@ -1204,13 +1753,31 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ─── Disconnect (UPDATED to update lastSeen) ──────────────────────────────
+  // ─── ADMIN ─── Admin real‑time stats via socket ────────────────────────────
+  socket.on('admin:subscribe', async () => {
+    if (!currentUser) return;
+    const profile = await UserProfile.findOne({ username: currentUser });
+    if (!profile || profile.role !== 'admin') {
+      socket.emit('admin:error', { message: 'Not authorized' });
+      return;
+    }
+    const interval = setInterval(async () => {
+      try {
+        const stats = await fetchStats();
+        socket.emit('admin:stats', stats);
+      } catch (err) {
+        // ignore
+      }
+    }, 5000);
+    socket.on('disconnect', () => clearInterval(interval));
+  });
+
+  // ─── Disconnect ─────────────────────────────────────────────────────────────
   socket.on("disconnect", () => {
     console.log(`🔴 Disconnected: ${socket.id}`);
     if (currentRoom) {
       removeUser(currentRoom, socket.id);
       io.to(currentRoom).emit("update_users", getUsers(currentRoom));
-      // update lastSeen for this user
       if (currentUser) {
         (async () => {
           try {
@@ -1231,5 +1798,15 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 1000;
 (async () => {
   await connectDB();
+
+  // Initialize system settings if not exist
+  if (mongoose.connection.readyState === 1) {
+    const settings = await SystemSettings.findOne();
+    if (!settings) {
+      await SystemSettings.create({});
+      console.log('✅ Default system settings created');
+    }
+  }
+
   server.listen(PORT, () => console.log(`🚀 NexChat server running on port ${PORT}`));
 })();
