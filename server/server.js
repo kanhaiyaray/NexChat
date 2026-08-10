@@ -100,11 +100,13 @@ const userProfileSchema = new mongoose.Schema({
   visibility: { type: String, enum: ['public', 'friends', 'private'], default: 'public' },
   hideOnlineStatus: { type: Boolean, default: false },
   hideReadReceipts: { type: Boolean, default: false },
-  activityFeed: { type: [{
-    message: String,
-    timestamp: Date,
-    roomId: String
-  }], default: [] },
+  activityFeed: {
+    type: [{
+      message: String,
+      timestamp: Date,
+      roomId: String
+    }], default: []
+  },
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
@@ -302,7 +304,7 @@ async function fetchStats() {
   const onlineUsers = Object.values(rooms).flat().length;
   const totalRooms = await PrivateRoom.countDocuments();
   const activeRooms = Object.keys(rooms).filter(roomId => rooms[roomId]?.length >= 2).length;
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   const messagesToday = await Message.countDocuments({ timestamp: { $gte: today } });
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   const newUsers24h = await UserProfile.countDocuments({ createdAt: { $gte: yesterday } });
@@ -315,8 +317,11 @@ const server = http.createServer(app);
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
   "http://localhost:5174",
   "http://localhost:5175",
+  "http://192.168.29.157:5173",
+  "http://192.168.1.122:5173",
   process.env.CLIENT_ORIGIN
 ].filter(Boolean);
 
@@ -739,7 +744,7 @@ app.get('/api/admin/stats', isAdmin, async (req, res) => {
     const totalRooms = await PrivateRoom.countDocuments();
     const activeRooms = Object.keys(rooms).filter(roomId => rooms[roomId]?.length >= 2).length;
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
     const messagesToday = await Message.countDocuments({ timestamp: { $gte: today } });
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -965,10 +970,12 @@ app.get('/api/admin/analytics/messages', isAdmin, async (req, res) => {
     startDate.setDate(startDate.getDate() - parseInt(days));
     const pipeline = [
       { $match: { timestamp: { $gte: startDate } } },
-      { $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
-        count: { $sum: 1 }
-      }},
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+          count: { $sum: 1 }
+        }
+      },
       { $sort: { _id: 1 } }
     ];
     const results = await Message.aggregate(pipeline);
@@ -1001,10 +1008,12 @@ app.get('/api/admin/analytics/users-over-time', isAdmin, async (req, res) => {
     startDate.setDate(startDate.getDate() - days);
     const pipeline = [
       { $match: { createdAt: { $gte: startDate } } },
-      { $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        count: { $sum: 1 }
-      }},
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 }
+        }
+      },
       { $sort: { _id: 1 } }
     ];
     const results = await UserProfile.aggregate(pipeline);
@@ -1022,10 +1031,12 @@ app.get('/api/admin/analytics/rooms-over-time', isAdmin, async (req, res) => {
     startDate.setDate(startDate.getDate() - days);
     const pipeline = [
       { $match: { createdAt: { $gte: startDate } } },
-      { $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        count: { $sum: 1 }
-      }},
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 }
+        }
+      },
       { $sort: { _id: 1 } }
     ];
     const results = await PrivateRoom.aggregate(pipeline);
@@ -1081,14 +1092,18 @@ app.get('/api/admin/analytics/activity-heatmap', isAdmin, async (req, res) => {
     startDate.setDate(startDate.getDate() - days);
     const pipeline = [
       { $match: { timestamp: { $gte: startDate } } },
-      { $project: {
-        hour: { $hour: '$timestamp' },
-        day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }
-      }},
-      { $group: {
-        _id: { day: '$day', hour: '$hour' },
-        count: { $sum: 1 }
-      }},
+      {
+        $project: {
+          hour: { $hour: '$timestamp' },
+          day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }
+        }
+      },
+      {
+        $group: {
+          _id: { day: '$day', hour: '$hour' },
+          count: { $sum: 1 }
+        }
+      },
       { $sort: { '_id.day': 1, '_id.hour': 1 } }
     ];
     const results = await Message.aggregate(pipeline);
@@ -1808,5 +1823,5 @@ const PORT = process.env.PORT || 1000;
     }
   }
 
-  server.listen(PORT, () => console.log(`🚀 NexChat server running on port ${PORT}`));
+  server.listen(PORT, '0.0.0.0', () => console.log(`🚀 NexChat server running on port ${PORT} on all interfaces`));
 })();

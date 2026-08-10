@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom"; 
 import io from "socket.io-client";
 import { SignIn, SignOutButton, useUser } from "@clerk/clerk-react";
 import ProfileModal from "./ProfileModal";
@@ -2776,6 +2777,10 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           <SignOutButton>
             <button className="sidebar-signout">Sign out</button>
           </SignOutButton>
+          {/* ─── Home link ─── */}
+          <Link to="/" style={{ display: 'block', marginTop: '8px', fontSize: '12px', color: 'var(--muted)', textAlign: 'center' }}>
+            ← Back to Home
+          </Link>
         </div>
       </aside>
 
