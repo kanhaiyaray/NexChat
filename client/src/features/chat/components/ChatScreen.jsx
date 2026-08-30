@@ -4,6 +4,7 @@ import MessageList from './MessageList.jsx';
 import MessageInput from './MessageInput.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import PinnedMessages from './PinnedMessages.jsx';
+import ThreadView from './ThreadView.jsx';
 import { useChat } from '../hooks/useChat.js';
 import { useMessages } from '../hooks/useMessages.js';
 import { useTyping } from '../hooks/useTyping.js';
@@ -16,7 +17,11 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [activePicker, setActivePicker] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [showEmoji, setShowEmoji] = useState(false);
-  
+
+  // 🆕 Thread state
+  const [threadView, setThreadView] = useState(null);
+  const [threadParent, setThreadParent] = useState(null);
+
   const endRef = useRef(null);
   const messagesAreaRef = useRef(null);
 
@@ -57,6 +62,20 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
 
   const { handleTyping } = useTyping(socket, roomId, username);
   useReadReceipts(messages, roomId, username, socket, readReceipts);
+
+  // 🆕 Open thread view
+  const openThread = (messageId) => {
+    const parent = messages.find(m => m.id === messageId);
+    if (parent) {
+      setThreadParent(parent);
+      setThreadView(messageId);
+    }
+  };
+
+  const closeThread = () => {
+    setThreadView(null);
+    setThreadParent(null);
+  };
 
   const handleContextMenu = (event, msgId, sender) => {
     event.preventDefault();
@@ -131,14 +150,14 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
             <div className="logo-dot" />
             NexChat
           </div>
-          <button 
-            className="mobile-menu-close" 
+          <button
+            className="mobile-menu-close"
             onClick={() => setSidebarOpen(false)}
           >
             ×
           </button>
         </div>
-        
+
         <div className="users-section">
           <div className="section-label">Members - {users.length}</div>
           {users.map((user) => (
@@ -154,19 +173,19 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           ))}
         </div>
 
-        <PinnedMessages 
+        <PinnedMessages
           pinnedMessages={pinnedMessages}
           onJumpToMessage={loadMessageContext}
         />
 
         <div className="sidebar-footer">
-          <button 
+          <button
             className="edit-profile-btn"
             onClick={() => setProfileModalOpen(true)}
           >
             ✎ Edit Profile
           </button>
-          <button 
+          <button
             className="sidebar-signout"
             onClick={onLeave}
           >
@@ -176,7 +195,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
       </aside>
 
       <main className="chat-main">
-        <ChatHeader 
+        <ChatHeader
           roomId={roomId}
           code={code}
           users={users}
@@ -195,6 +214,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
             onReaction={handleReaction}
             onContextMenu={handleContextMenu}
             onJumpToMessage={loadMessageContext}
+            onOpenThread={openThread}
             editingMessageId={editingMessageId}
             editingDraft={editingDraft}
             setEditingDraft={setEditingDraft}
@@ -222,7 +242,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
       </main>
 
       {contextMenu?.visible && (
-        <div 
+        <div
           className="context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
@@ -233,6 +253,17 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
         <div className="lightbox" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="full view" />
         </div>
+      )}
+
+      {/* 🆕 Thread View Modal */}
+      {threadView && (
+        <ThreadView
+          threadId={threadView}
+          parent={threadParent}
+          onClose={closeThread}
+          room={roomId}
+          username={username}
+        />
       )}
     </div>
   );

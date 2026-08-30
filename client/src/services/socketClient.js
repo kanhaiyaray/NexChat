@@ -7,6 +7,9 @@ let socket = null;
 export const getSocket = () => {
   if (!socket) {
     socket = io(SOCKET_URL);
+    if (typeof window !== 'undefined') {
+      window.socket = socket;
+    }
   }
   return socket;
 };
@@ -14,6 +17,9 @@ export const getSocket = () => {
 export const connectSocket = () => {
   if (!socket) {
     socket = io(SOCKET_URL);
+    if (typeof window !== 'undefined') {
+      window.socket = socket;
+    }
   }
   return socket;
 };
@@ -22,6 +28,9 @@ export const disconnectSocket = () => {
   if (socket) {
     socket.disconnect();
     socket = null;
+    if (typeof window !== 'undefined') {
+      window.socket = null;
+    }
   }
 };
 

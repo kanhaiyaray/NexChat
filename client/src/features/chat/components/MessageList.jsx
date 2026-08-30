@@ -9,6 +9,8 @@ const MessageList = ({
   setActivePicker,
   onReaction,
   onContextMenu,
+  onJumpToMessage,
+  onOpenThread,
   editingMessageId,
   editingDraft,
   setEditingDraft,
@@ -40,12 +42,14 @@ const MessageList = ({
             setActivePicker={setActivePicker}
             onReaction={onReaction}
             onContextMenu={onContextMenu}
+            onOpenThread={onOpenThread}
             isEditing={isEditing}
             editingDraft={editingDraft}
             setEditingDraft={setEditingDraft}
             onSaveEdit={onSaveEdit}
             onCancelEdit={onCancelEdit}
             editSaving={editSaving}
+            username={username}
           />
         );
       })}

@@ -16,7 +16,21 @@ const messageSchema = new mongoose.Schema({
     messageId: { type: String, default: null },
     snippet: { type: String, default: null },
     sender: { type: String, default: null }
-  }
+  },
+  
+  // 🆕 Thread support
+  parentId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Message',
+    index: true 
+  },
+  threadId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Message',
+    index: true 
+  },
+  isThreadParent: { type: Boolean, default: false },
+  replyCount: { type: Number, default: 0 }
 }, { timestamps: false });
 
 // Indexes for performance
@@ -25,6 +39,11 @@ messageSchema.index({ message: 'text' });
 messageSchema.index({ timestamp: 1 });
 messageSchema.index({ type: 1 });
 messageSchema.index({ room: 1, type: 1, timestamp: -1 });
+
+// 🆕 Thread indexes
+messageSchema.index({ threadId: 1, timestamp: 1 });
+messageSchema.index({ parentId: 1, timestamp: 1 });
+messageSchema.index({ isThreadParent: 1 });
 
 export const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
 export default Message;

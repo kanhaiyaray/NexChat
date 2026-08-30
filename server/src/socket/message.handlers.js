@@ -9,6 +9,7 @@ import { addActivityFeedItem } from '../services/profile.service.js';
 import { pinMessage, unpinMessage } from '../services/room.service.js';
 import { uploadImage, uploadVoice, isCloudinaryConfigured } from '../config/cloudinary.js';
 import { roomState } from '../state/roomState.js';
+import { Message } from '../models/index.js';
 
 export const messageHandlers = (socket, io) => {
   const currentRoom = () => socket.currentRoom;
@@ -50,6 +51,10 @@ export const messageHandlers = (socket, io) => {
           editedAt: savedMsg.editedAt || null,
           reactions: savedMsg.reactions || {},
           replyTo: savedMsg.replyTo || null,
+          parentId: savedMsg.parentId || null,
+          threadId: savedMsg.threadId || null,
+          isThreadParent: savedMsg.isThreadParent || false,
+          replyCount: savedMsg.replyCount || 0,
         };
 
         io.to(room).emit('receive_message', finalMessage);
@@ -106,6 +111,10 @@ export const messageHandlers = (socket, io) => {
           edited: savedMsg.edited || false,
           editedAt: savedMsg.editedAt || null,
           reactions: savedMsg.reactions || {},
+          parentId: savedMsg.parentId || null,
+          threadId: savedMsg.threadId || null,
+          isThreadParent: savedMsg.isThreadParent || false,
+          replyCount: savedMsg.replyCount || 0,
         };
 
         io.to(room).emit('receive_image', finalMessage);
@@ -163,6 +172,10 @@ export const messageHandlers = (socket, io) => {
           edited: savedMsg.edited || false,
           editedAt: savedMsg.editedAt || null,
           reactions: savedMsg.reactions || {},
+          parentId: savedMsg.parentId || null,
+          threadId: savedMsg.threadId || null,
+          isThreadParent: savedMsg.isThreadParent || false,
+          replyCount: savedMsg.replyCount || 0,
         };
 
         io.to(room).emit('receive_voice', finalMessage);
@@ -349,6 +362,147 @@ export const messageHandlers = (socket, io) => {
 
       if (roomId && user) {
         socket.to(roomId).emit('user_typing', { username: user, isTyping: false });
+      }
+    },
+
+    // ─── 🆕 THREAD HANDLERS ──────────────────────────────────────────────────
+
+    reply_message: async ({ room, parentId, message, sender, timestamp }) => {
+      const roomId = room || currentRoom();
+      const user = sender || currentUser();
+
+      if (!roomId || !user) {
+        socket.emit('reply_error', { message: 'Not in a room' });
+        return;
+      }
+
+      if (!parentId || !message?.trim()) {
+        socket.emit('reply_error', { message: 'Invalid reply data' });
+        return;
+      }
+
+      try {
+        const parent = await Message.findOne({ _id: parentId, room: roomId });
+        if (!parent) {
+          socket.emit('reply_error', { message: 'Parent message not found' });
+          return;
+        }
+
+        const reply = new Message({
+          room: roomId,
+          sender: user,
+          message: message.trim(),
+          type: 'text',
+          timestamp: new Date(timestamp || Date.now()),
+          parentId: parentId,
+          threadId: parentId,
+        });
+
+        await reply.save();
+
+        await Message.findByIdAndUpdate(parentId, {
+          $inc: { replyCount: 1 },
+          isThreadParent: true
+        });
+
+        const updatedParent = await Message.findById(parentId);
+
+        io.to(roomId).emit('receive_reply', {
+          reply: {
+            id: reply._id.toString(),
+            room: reply.room,
+            sender: reply.sender,
+            message: reply.message,
+            type: reply.type,
+            timestamp: reply.timestamp.toISOString(),
+            parentId: reply.parentId,
+            threadId: reply.threadId,
+            reactions: reply.reactions || {},
+            edited: false,
+            editedAt: null,
+          },
+          parent: {
+            id: updatedParent._id.toString(),
+            sender: updatedParent.sender,
+            message: updatedParent.message,
+            snippet: updatedParent.message?.slice(0, 100),
+            replyCount: updatedParent.replyCount,
+          }
+        });
+
+        const threadMessages = await Message.find({ threadId: parentId })
+          .sort({ timestamp: 1 })
+          .lean();
+
+        io.to(roomId).emit('thread_updated', {
+          threadId: parentId,
+          messages: threadMessages.map(msg => ({
+            ...msg,
+            id: msg._id.toString(),
+          })),
+        });
+
+      } catch (error) {
+        console.error('Reply error:', error);
+        socket.emit('reply_error', { message: 'Failed to send reply' });
+      }
+    },
+
+    load_thread: async ({ threadId }) => {
+      if (!threadId) {
+        socket.emit('thread_error', { message: 'Thread ID required' });
+        return;
+      }
+
+      try {
+        const messages = await Message.find({ threadId })
+          .sort({ timestamp: 1 })
+          .lean();
+
+        const parent = await Message.findById(threadId).lean();
+
+        socket.emit('thread_loaded', {
+          threadId,
+          parent: parent ? {
+            ...parent,
+            id: parent._id.toString(),
+          } : null,
+          messages: messages.map(msg => ({
+            ...msg,
+            id: msg._id.toString(),
+          })),
+        });
+      } catch (error) {
+        console.error('Load thread error:', error);
+        socket.emit('thread_error', { message: 'Failed to load thread' });
+      }
+    },
+
+    get_thread_summaries: async ({ room }) => {
+      const roomId = room || currentRoom();
+
+      if (!roomId) {
+        socket.emit('thread_error', { message: 'Room required' });
+        return;
+      }
+
+      try {
+        const threads = await Message.find({
+          room: roomId,
+          isThreadParent: true,
+        })
+          .sort({ timestamp: -1 })
+          .lean();
+
+        socket.emit('thread_summaries', {
+          threads: threads.map(thread => ({
+            ...thread,
+            id: thread._id.toString(),
+          })),
+        });
+      } catch (error) {
+        console.error('Thread summary error:', error);
+        socket.emit('thread_error', { message: 'Failed to load threads' });
       }
     },
   };
