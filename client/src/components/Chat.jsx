@@ -5,6 +5,8 @@ import { SignIn, SignOutButton, useUser } from "@clerk/clerk-react";
 import ProfileModal from "./ProfileModal";
 import VoiceRecorder from "./VoiceRecorder";
 import VoicePlayer from "./VoicePlayer";
+import FileUpload from "../features/media/components/FileUpload.jsx";
+import FilePreview from "../features/media/components/FilePreview.jsx";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:1000";
 const API_BASE = SOCKET_URL;
@@ -1651,6 +1653,179 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
       color: #00e5ff !important;
       background: rgba(0,229,255,0.08) !important;
     }
+
+    /* ─── File Preview Styles ──────────────────────────────────────────────── */
+    .file-preview-wrapper {
+      width: 100%;
+    }
+
+    .file-preview {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border, rgba(99,210,255,0.08));
+      transition: all 0.2s ease;
+      max-width: 320px;
+      min-width: 200px;
+      cursor: default;
+    }
+
+    .file-preview:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(99,210,255,0.15);
+    }
+
+    .file-preview.expanded {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(99,210,255,0.2);
+    }
+
+    .file-preview.error {
+      border-color: rgba(244, 114, 182, 0.2);
+    }
+
+    .file-preview .file-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+
+    .file-preview .file-name {
+      color: var(--text, #e2e8f0);
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-preview .file-info {
+      display: flex;
+      gap: 8px;
+      color: var(--muted, #64748b);
+      font-size: 11px;
+    }
+
+    .file-preview .download-btn {
+      background: linear-gradient(135deg, var(--cyan, #3dd6f5), var(--violet, #a78bfa));
+      border: none;
+      border-radius: 6px;
+      color: #070b14;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .file-preview .download-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(61, 214, 245, 0.25);
+    }
+
+    .file-preview .preview-area {
+      margin-top: 12px;
+      border-top: 1px solid var(--border, rgba(99,210,255,0.08));
+      padding-top: 12px;
+      max-height: 400px;
+      overflow: auto;
+    }
+
+    .file-preview .preview-area iframe {
+      width: 100%;
+      border: none;
+      border-radius: 8px;
+    }
+
+    .file-preview .preview-area .pdf-preview {
+      height: 350px;
+    }
+
+    .file-preview .preview-area .text-preview {
+      height: 200px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .file-preview .preview-error {
+      color: var(--rose, #f472b6);
+      font-size: 13px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    /* File Upload Button */
+    .file-upload-btn {
+      background: none;
+      border: none;
+      color: var(--muted, #64748b);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: all 0.15s ease;
+    }
+
+    .file-upload-btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text, #e2e8f0);
+    }
+
+    .file-upload-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .file-upload-btn.uploading {
+      background: rgba(61, 214, 245, 0.1);
+      color: var(--cyan, #3dd6f5);
+    }
+
+    /* Drag and Drop Overlay */
+    .file-drag-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      flex-direction: column;
+      gap: 16px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .file-drag-overlay .drag-icon {
+      font-size: 48px;
+    }
+
+    .file-drag-overlay .drag-title {
+      color: var(--text, #e2e8f0);
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .file-drag-overlay .drag-subtitle {
+      color: var(--muted, #64748b);
+      font-size: 14px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 480px) {
+      .file-preview {
+        max-width: 100%;
+        min-width: 0;
+      }
+      
+      .file-preview .preview-area .pdf-preview {
+        height: 250px;
+      }
+    }
   `;
   document.head.appendChild(styleSheet);
 }
@@ -1776,7 +1951,6 @@ const PrivateJoinScreen = ({ clerkUser, initialCode, onJoin }) => {
     if (initialCode) {
       validateAndJoin(initialCode);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode]);
 
   const validateAndJoin = async (rawInput) => {
@@ -1923,6 +2097,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [toastType, setToastType] = useState("info");
   const [imgUploading, setImgUploading] = useState(false);
   const [voiceUploading, setVoiceUploading] = useState(false);
+  const [fileUploading, setFileUploading] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState("");
   const [editingDraft, setEditingDraft] = useState("");
   const [editSaving, setEditSaving] = useState(false);
@@ -1940,12 +2115,10 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
   const [highlightedMessageId, setHighlightedMessageId] = useState("");
 
-  // Pinning & read receipts state
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [pinsOpen, setPinsOpen] = useState(true);
   const [readReceipts, setReadReceipts] = useState({});
 
-  // Profile state
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
   const [userProfilesCache, setUserProfilesCache] = useState({});
@@ -1973,49 +2146,48 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     toastTimer.current = setTimeout(() => setToast(""), 3000);
   };
 
-  // Fetch user profile with auto-sync fallback
   const fetchUserProfile = async (clerkId) => {
-  if (!clerkId) {
-    console.log("No clerkId provided");
-    return null;
-  }
-  
-  try {
-    const url = `${API_BASE}/api/user/profile/${clerkId}`;
-    console.log("Fetching from:", url);
-    const response = await fetch(url);
-    
-    if (response.status === 404) {
-      const syncUrl = `${API_BASE}/api/user/sync/${clerkId}`;
-      const syncResponse = await fetch(syncUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: username,
-          email: clerkUser?.primaryEmailAddress?.emailAddress,
-          avatarUrl: clerkUser?.imageUrl
-        })
-      });
-      
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json();
-        setUserProfile(syncData.profile);
-        return syncData.profile;
-      }
+    if (!clerkId) {
+      console.log("No clerkId provided");
       return null;
     }
     
-    const data = await response.json();
-    if (response.ok) {
-      setUserProfile(data);
-      return data;
+    try {
+      const url = `${API_BASE}/api/user/profile/${clerkId}`;
+      console.log("Fetching from:", url);
+      const response = await fetch(url);
+      
+      if (response.status === 404) {
+        const syncUrl = `${API_BASE}/api/user/sync/${clerkId}`;
+        const syncResponse = await fetch(syncUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: username,
+            email: clerkUser?.primaryEmailAddress?.emailAddress,
+            avatarUrl: clerkUser?.imageUrl
+          })
+        });
+        
+        if (syncResponse.ok) {
+          const syncData = await syncResponse.json();
+          setUserProfile(syncData.profile);
+          return syncData.profile;
+        }
+        return null;
+      }
+      
+      const data = await response.json();
+      if (response.ok) {
+        setUserProfile(data);
+        return data;
+      }
+      return null;
+    } catch (err) {
+      console.error("Failed to fetch profile:", err);
+      return null;
     }
-    return null;
-  } catch (err) {
-    console.error("Failed to fetch profile:", err);
-    return null;
-  }
-};
+  };
 
   useEffect(() => {
     return () => {
@@ -2060,21 +2232,16 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  // Load profile on mount
   useEffect(() => {
     if (clerkUser?.id) {
       fetchUserProfile(clerkUser.id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clerkUser?.id]);
 
-  // Socket listener for profile updates
   useEffect(() => {
     const onProfileUpdated = (updatedProfile) => {
-      // Update cache by username (and also by clerkId for convenience)
       setUserProfilesCache(prev => {
         const newCache = { ...prev };
-        // update by username
         newCache[updatedProfile.username] = {
           displayName: updatedProfile.displayName || updatedProfile.username,
           statusEmoji: updatedProfile.statusEmoji || '🌟',
@@ -2083,19 +2250,16 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           avatarUrl: updatedProfile.avatarUrl,
           avatarColor: updatedProfile.avatarColor,
         };
-        // also by clerkId if available (for compatibility)
         if (updatedProfile.clerkId) {
           newCache[updatedProfile.clerkId] = newCache[updatedProfile.username];
         }
         return newCache;
       });
-      // Also update users list if that user is in the list
       setUsers(prevUsers => prevUsers.map(u =>
         u.username === updatedProfile.username
           ? { ...u, ...updatedProfile }
           : u
       ));
-      // If it's our own profile, update userProfile
       if (updatedProfile.clerkId === clerkUser?.id) {
         setUserProfile(updatedProfile);
       }
@@ -2246,9 +2410,18 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
       setVoiceUploading(false);
     };
 
+    const onReceiveFile = (data) => {
+      if (!historyLoaded) {
+        setMessageBuffer((prev) => [...prev, data]);
+        return;
+      }
+      shouldAutoScrollRef.current = true;
+      setMessages((prev) => (prev.some((msg) => msg.id === data.id) ? prev : [...prev, data]));
+      setFileUploading(false);
+    };
+
     const onUpdateUsers = (data) => {
       setUsers(data);
-      // Update cache with profiles
       const newCache = {};
       data.forEach(user => {
         newCache[user.username] = {
@@ -2259,7 +2432,6 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           avatarUrl: user.avatarUrl,
           avatarColor: user.avatarColor,
         };
-        // also store by clerkId for convenience
         if (user.clerkId) {
           newCache[user.clerkId] = newCache[user.username];
         }
@@ -2290,6 +2462,11 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     const onVoiceError = ({ message: errorMessage }) => {
       setVoiceUploading(false);
       showToast(errorMessage || "Voice upload failed.", "error");
+    };
+
+    const onFileError = ({ message: errorMessage }) => {
+      setFileUploading(false);
+      showToast(errorMessage || "File upload failed.", "error");
     };
 
     const onMessageDeleted = ({ msgId }) => {
@@ -2363,11 +2540,13 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     socket.on("receive_message", onReceiveMessage);
     socket.on("receive_image", onReceiveImage);
     socket.on("receive_voice", onReceiveVoice);
+    socket.on("receive_file", onReceiveFile);
     socket.on("update_users", onUpdateUsers);
     socket.on("user_typing", onUserTyping);
     socket.on("update_reaction", onUpdateReaction);
     socket.on("image_error", onImageError);
     socket.on("voice_error", onVoiceError);
+    socket.on("file_error", onFileError);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("delete_error", onDeleteError);
     socket.on("message_edited", onMessageEdited);
@@ -2385,11 +2564,13 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
       socket.off("receive_message", onReceiveMessage);
       socket.off("receive_image", onReceiveImage);
       socket.off("receive_voice", onReceiveVoice);
+      socket.off("receive_file", onReceiveFile);
       socket.off("update_users", onUpdateUsers);
       socket.off("user_typing", onUserTyping);
       socket.off("update_reaction", onUpdateReaction);
       socket.off("image_error", onImageError);
       socket.off("voice_error", onVoiceError);
+      socket.off("file_error", onFileError);
       socket.off("message_deleted", onMessageDeleted);
       socket.off("delete_error", onDeleteError);
       socket.off("message_edited", onMessageEdited);
@@ -2648,6 +2829,16 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     searchResults.length > 0;
   const hasSearchQuery = searchQuery.trim().length > 0;
 
+  const handleFileUploadComplete = (data) => {
+    setFileUploading(false);
+    showToast(`📎 File uploaded: ${data.message.fileName}`);
+  };
+
+  const handleFileUploadError = (error) => {
+    setFileUploading(false);
+    showToast(error, "error");
+  };
+
   return (
     <div className="chat-layout">
       <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
@@ -2730,7 +2921,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
                   >
                     <div className="pin-sender">{msg.sender}</div>
                     <div className="pin-snippet">
-                      {msg.type === "text" ? msg.message.slice(0, 60) : msg.type === "image" ? "📷 Image" : "🎤 Voice"}
+                      {msg.type === "text" ? msg.message.slice(0, 60) : msg.type === "image" ? "📷 Image" : msg.type === "file" ? `📎 ${msg.fileName}` : "🎤 Voice"}
                     </div>
                   </div>
                 ))
@@ -2777,7 +2968,6 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           <SignOutButton>
             <button className="sidebar-signout">Sign out</button>
           </SignOutButton>
-          {/* ─── Home link ─── */}
           <Link to="/" style={{ display: 'block', marginTop: '8px', fontSize: '12px', color: 'var(--muted)', textAlign: 'center' }}>
             ← Back to Home
           </Link>
@@ -2921,7 +3111,6 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
                 const isTargeted = highlightedMessageId === msg.id;
                 const isEditingThisMessage = editingMessageId === msg.id;
 
-                // Get display name from cache
                 const senderProfile = userProfilesCache[msg.sender] || {};
                 const displayName = senderProfile.displayName || msg.sender;
 
@@ -3008,6 +3197,18 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
                               </>
                             ) : msg.type === "voice" ? (
                               <VoicePlayer audioUrl={msg.voiceUrl} duration={msg.voiceDuration} />
+                            ) : msg.type === "file" ? (
+                              <div className="file-preview-wrapper">
+                                <FilePreview
+                                  file={{
+                                    messageId: msg.id,
+                                    fileName: msg.fileName || "File",
+                                    fileSize: msg.fileSize || 0,
+                                    fileType: msg.fileType || "application/octet-stream",
+                                    fileUrl: msg.fileUrl || "#"
+                                  }}
+                                />
+                              </div>
                             ) : (
                               activeSearchTerm && isTargeted
                                 ? highlightText(msg.message, activeSearchTerm, true)
@@ -3133,6 +3334,13 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
             </div>
           ) : null}
 
+          {fileUploading ? (
+            <div className="uploading-indicator">
+              <span className="spin-icon">⏳</span>
+              Uploading file...
+            </div>
+          ) : null}
+
           {imagePreview && !imgUploading ? (
             <div className="image-preview">
               <img className="preview-thumb" src={imagePreview} alt="preview" />
@@ -3147,10 +3355,15 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           ) : null}
 
           <div className="input-row">
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
-            <button className="icon-btn" type="button" onClick={() => fileRef.current?.click()} disabled={imgUploading} title="Attach image">
-              📎
-            </button>
+            <FileUpload
+              room={roomId}
+              sender={username}
+              clerkId={clerkUser?.id}
+              onUploadComplete={handleFileUploadComplete}
+              onError={handleFileUploadError}
+              disabled={imgUploading || voiceUploading || fileUploading}
+            />
+
             <textarea
               ref={inputRef}
               className="msg-input"
@@ -3169,7 +3382,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
               }}
               style={{ height: "42px", lineHeight: "18px", paddingTop: "12px" }}
             />
-            <VoiceRecorder onSend={sendVoice} disabled={voiceUploading} />
+            <VoiceRecorder onSend={sendVoice} disabled={voiceUploading || fileUploading} />
             <button className="icon-btn" type="button" onClick={() => setShowEmoji((current) => !current)} title="Emoji">
               😊
             </button>
@@ -3215,7 +3428,6 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
               avatarUrl: updatedProfile.avatarUrl,
               avatarColor: updatedProfile.avatarColor,
             },
-            // also by clerkId
             [updatedProfile.clerkId]: {
               displayName: updatedProfile.displayName || updatedProfile.username,
               statusEmoji: updatedProfile.statusEmoji || '🌟',
@@ -3238,14 +3450,12 @@ const Chat = () => {
   const [joined, setJoined] = useState(false);
 
   useEffect(() => {
-    // Try path-based /join/CODE first
     const path = window.location.pathname;
     let urlCode = null;
     const match = path.match(/^\/join\/([A-Za-z0-9]+)/);
     if (match) {
       urlCode = match[1];
     } else {
-      // fallback to query param ?code=... for compatibility
       const params = new URLSearchParams(window.location.search);
       urlCode = params.get("code");
     }
