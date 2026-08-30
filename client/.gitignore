@@ -52,7 +52,6 @@ error.log
 # UPLOADS
 # ──────────────────────────────────────────────────────────────────
 uploads/
-media/
 files/
 temp/
 public/uploads/
