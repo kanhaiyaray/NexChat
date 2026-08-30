@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import ReactCrop from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 
@@ -95,7 +95,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
         setError("Only image files are allowed");
         return;
       }
-      // Open crop modal
       const reader = new FileReader();
       reader.onload = () => {
         setCropImageSrc(reader.result);
@@ -105,11 +104,10 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
     }
   };
 
-  // Crop logic
   const onImageLoad = (e) => {
     const { width, height } = e.currentTarget;
     const cropWidth = Math.min(width * 0.7, 300);
-    const cropHeight = cropWidth; // 1:1 aspect
+    const cropHeight = cropWidth;
     const cropX = (width - cropWidth) / 2;
     const cropY = (height - cropHeight) / 2;
     setCrop({
@@ -156,7 +154,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
       const croppedFile = await getCroppedImg();
       setAvatarFile(croppedFile);
       const previewUrl = URL.createObjectURL(croppedFile);
-      // revoke old preview if any
       if (avatarPreview && avatarPreview.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
       setAvatarPreview(previewUrl);
       setCropModalOpen(false);
@@ -221,7 +218,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
               </div>
             </div>
 
-            {/* Display Name */}
             <div className="profile-field">
               <label>Display Name</label>
               <input
@@ -233,7 +229,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
               />
             </div>
 
-            {/* Status */}
             <div className="profile-field">
               <label>Status</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -266,7 +261,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
               </div>
             </div>
 
-            {/* Bio */}
             <div className="profile-field">
               <label>Bio</label>
               <textarea
@@ -280,7 +274,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
               <span className="profile-char-count">{bio.length}/160</span>
             </div>
 
-            {/* Visibility */}
             <div className="profile-field">
               <label>Profile Visibility</label>
               <select
@@ -294,7 +287,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
               </select>
             </div>
 
-            {/* Privacy toggles */}
             <div className="profile-field" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <input
@@ -314,7 +306,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
               </label>
             </div>
 
-            {/* Activity Feed (self only) */}
             {activityFeed.length > 0 && (
               <div className="profile-field">
                 <label>Recent Activity</label>
@@ -341,7 +332,6 @@ const ProfileModal = ({ isOpen, onClose, clerkUser, currentProfile, onProfileUpd
         </div>
       </div>
 
-      {/* Crop Modal */}
       {cropModalOpen && (
         <div className="profile-modal-overlay" onClick={() => setCropModalOpen(false)}>
           <div className="profile-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>

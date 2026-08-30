@@ -1,33 +1,43 @@
-import { useEffect, useState } from 'react'
-import io from 'socket.io-client'
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:1000'
+﻿import { useEffect, useState } from 'react';
+import { getSocket } from '../services/socketClient.js';
 
 export function useAdminSocket(clerkId) {
-  const [stats, setStats] = useState(null)
-  const [socket, setSocket] = useState(null)
+  const [stats, setStats] = useState(null);
+  const [socket, setSocket] = useState(null);
 
   useEffect(() => {
-    if (!clerkId) return
-    const socketInstance = io(SOCKET_URL)
-    setSocket(socketInstance)
+    if (!clerkId) return;
+    
+    // Reuse existing socket connection instead of creating a new one
+    const socketInstance = getSocket();
+    setSocket(socketInstance);
 
-    socketInstance.on('connect', () => {
-      socketInstance.emit('admin:subscribe')
-    })
+    // Only subscribe if socket is connected
+    if (socketInstance.connected) {
+      socketInstance.emit('admin:subscribe');
+    } else {
+      socketInstance.once('connect', () => {
+        socketInstance.emit('admin:subscribe');
+      });
+    }
 
-    socketInstance.on('admin:stats', (data) => {
-      setStats(data)
-    })
+    const handleStats = (data) => {
+      setStats(data);
+    };
 
-    socketInstance.on('admin:error', (err) => {
-      console.error('Admin socket error:', err)
-    })
+    const handleError = (err) => {
+      console.error('Admin socket error:', err);
+    };
+
+    socketInstance.on('admin:stats', handleStats);
+    socketInstance.on('admin:error', handleError);
 
     return () => {
-      socketInstance.disconnect()
-    }
-  }, [clerkId])
+      socketInstance.off('admin:stats', handleStats);
+      socketInstance.off('admin:error', handleError);
+      // Don't disconnect - the socket is shared
+    };
+  }, [clerkId]);
 
-  return { stats, socket }
+  return { stats, socket };
 }

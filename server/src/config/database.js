@@ -28,4 +28,12 @@ export const getDBStatus = () => {
          mongoose.connection.readyState === 0 ? 'disconnected' : 'connecting';
 };
 
-export default { connectDB, getDBStatus };
+export const disconnectDB = async () => {
+  if (isConnected) {
+    await mongoose.disconnect();
+    isConnected = false;
+    console.log('🔌 MongoDB disconnected');
+  }
+};
+
+export default { connectDB, getDBStatus, disconnectDB };

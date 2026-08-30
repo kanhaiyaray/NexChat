@@ -9,6 +9,7 @@ import { useChat } from '../hooks/useChat.js';
 import { useMessages } from '../hooks/useMessages.js';
 import { useTyping } from '../hooks/useTyping.js';
 import { useReadReceipts } from '../hooks/useReadReceipts.js';
+import ProfileModal from '../../../components/ProfileModal.jsx';
 
 const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -17,6 +18,13 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [activePicker, setActivePicker] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [activeSearchTerm, setActiveSearchTerm] = useState('');
+  const [highlightedMessageId, setHighlightedMessageId] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
 
   // Thread state
   const [threadView, setThreadView] = useState(null);
@@ -24,6 +32,8 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
 
   const endRef = useRef(null);
   const messagesAreaRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const searchShellRef = useRef(null);
 
   const {
     messages,
@@ -62,6 +72,25 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
 
   const { handleTyping } = useTyping(socket, roomId, username);
   useReadReceipts(messages, roomId, username, socket, readReceipts);
+
+  // Fetch user profile
+  useEffect(() => {
+    if (clerkUser?.id) {
+      const fetchProfile = async () => {
+        try {
+          const API_BASE = import.meta.env.VITE_SOCKET_URL || 'http://localhost:1000';
+          const response = await fetch(`${API_BASE}/api/user/profile/${clerkUser.id}`);
+          if (response.ok) {
+            const data = await response.json();
+            setUserProfile(data);
+          }
+        } catch (err) {
+          console.error('Failed to fetch profile:', err);
+        }
+      };
+      fetchProfile();
+    }
+  }, [clerkUser?.id]);
 
   // Open thread view
   const openThread = (messageId) => {
@@ -128,10 +157,90 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     closeContextMenu();
   };
 
+  // Search functionality
+  const runSearch = async (query) => {
+    const trimmedQuery = query.trim();
+    setSearchQuery(trimmedQuery);
+    setSearchError('');
+
+    if (!trimmedQuery) {
+      setSearchResults([]);
+      setActiveSearchTerm('');
+      return;
+    }
+
+    setSearchLoading(true);
+    try {
+      const API_BASE = import.meta.env.VITE_SOCKET_URL || 'http://localhost:1000';
+      const url = new URL(`${API_BASE}/api/search`);
+      url.searchParams.set('code', code);
+      url.searchParams.set('roomId', roomId);
+      url.searchParams.set('q', trimmedQuery);
+
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Search failed.');
+      }
+
+      setSearchResults(data.results || []);
+      setActiveSearchTerm(trimmedQuery);
+    } catch (error) {
+      setSearchError(error.message || 'Search failed.');
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchError('');
+    setActiveSearchTerm('');
+    setHighlightedMessageId('');
+  };
+
+  const jumpToSearchResult = (result) => {
+    const term = searchQuery.trim();
+    setActiveSearchTerm(term);
+    setHighlightedMessageId(result.id);
+    const existingNode = document.querySelector(`[data-msg-id="${result.id}"]`);
+    if (existingNode) {
+      existingNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      loadMessageContext(result.id);
+    }
+  };
+
+  // File upload handlers
+  const handleFileUploadComplete = (data) => {
+    console.log('File uploaded:', data);
+  };
+
+  const handleFileUploadError = (error) => {
+    console.error('File upload error:', error);
+  };
+
   useEffect(() => {
     const handleClick = () => closeContextMenu();
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === 'Escape') {
+        clearSearch();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   if (loading) {
@@ -141,6 +250,8 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   if (error) {
     return <div className="error-msg">{error}</div>;
   }
+
+  const showSearchPanel = searchLoading || !!searchError || searchResults.length > 0;
 
   return (
     <div className="chat-layout">
@@ -179,6 +290,15 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
         />
 
         <div className="sidebar-footer">
+          <div className="my-info" style={{ cursor: 'pointer' }} onClick={() => setProfileModalOpen(true)}>
+            <div className="avatar" style={{ background: userProfile?.avatarColor || '#3dd6f5' }}>
+              {userProfile?.displayName?.[0] || username[0]}
+            </div>
+            <div>
+              <div className="my-name">{userProfile?.displayName || username}</div>
+              <div className="my-status">{userProfile?.statusText || '● Active'}</div>
+            </div>
+          </div>
           <button
             className="edit-profile-btn"
             onClick={() => setProfileModalOpen(true)}
@@ -201,9 +321,33 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           users={users}
           onCopyLink={() => {}}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          runSearch={runSearch}
+          clearSearch={clearSearch}
+          searchLoading={searchLoading}
+          searchResults={searchResults}
+          searchError={searchError}
+          showSearchPanel={showSearchPanel}
+          jumpToSearchResult={jumpToSearchResult}
+          searchInputRef={searchInputRef}
+          searchShellRef={searchShellRef}
         />
 
         <div className="messages-area" ref={messagesAreaRef}>
+          {activeSearchTerm && highlightedMessageId && (
+            <div className="search-context-bar">
+              <div>
+                Showing search context for <strong>"{activeSearchTerm}"</strong>.
+              </div>
+              <button type="button" className="jump-badge" onClick={() => {
+                setActiveSearchTerm('');
+                setHighlightedMessageId('');
+              }}>
+                Clear highlight
+              </button>
+            </div>
+          )}
           <MessageList
             messages={messages}
             username={username}
@@ -223,6 +367,8 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
             editSaving={editSaving}
             roomId={roomId}
             clerkId={clerkUser?.id}
+            highlightedMessageId={highlightedMessageId}
+            activeSearchTerm={activeSearchTerm}
           />
           <div ref={endRef} />
         </div>
@@ -240,6 +386,11 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           showEmoji={showEmoji}
           setShowEmoji={setShowEmoji}
           disabled={false}
+          roomId={roomId}
+          username={username}
+          clerkUser={clerkUser}
+          onFileUploadComplete={handleFileUploadComplete}
+          onFileUploadError={handleFileUploadError}
         />
       </main>
 
@@ -248,6 +399,36 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           className="context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
+          <div className="reaction-row">
+            {['❤️', '🔥', '😂', '👍', '😮', '💯'].map((emoji) => (
+              <span
+                key={emoji}
+                className="reaction-opt"
+                onClick={() => handleReaction(contextMenu.msgId, emoji)}
+              >
+                {emoji}
+              </span>
+            ))}
+          </div>
+          {contextMenu.sender === username && (
+            <>
+              <div className="context-menu-divider" />
+              <div className="context-menu-item" onClick={handleEditMessage}>
+                Edit message
+              </div>
+              <div className="context-menu-item" onClick={handleDeleteMessage}>
+                Delete message
+              </div>
+              <div className="context-menu-item" onClick={handlePinMessage}>
+                📌 Pin message
+              </div>
+              {pinnedMessages.some(m => m.id === contextMenu.msgId) && (
+                <div className="context-menu-item" onClick={handleUnpinMessage}>
+                  📌 Unpin
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -267,6 +448,17 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
           username={username}
         />
       )}
+
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        clerkUser={clerkUser}
+        currentProfile={userProfile}
+        onProfileUpdate={(updatedProfile) => {
+          setUserProfile(updatedProfile);
+        }}
+      />
     </div>
   );
 };

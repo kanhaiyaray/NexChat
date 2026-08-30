@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 
 const VoicePlayer = ({ audioUrl, duration: propDuration }) => {
   const [isPlaying, setIsPlaying] = useState(false);

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 
 const VoiceRecorder = ({ onSend, disabled }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -34,13 +34,13 @@ const VoiceRecorder = ({ onSend, disabled }) => {
         await processAudio(audioBlob);
       };
 
-      mediaRecorder.start(100); // Collect data every 100ms
+      mediaRecorder.start(100);
       setIsRecording(true);
       setRecordingTime(0);
 
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
-          if (prev >= 60) { // Max 60 seconds
+          if (prev >= 60) {
             stopRecording();
             return 60;
           }
@@ -49,7 +49,6 @@ const VoiceRecorder = ({ onSend, disabled }) => {
       }, 1000);
     } catch (err) {
       console.error("Microphone access denied:", err);
-      // Toast notification: "Microphone access required for voice messages"
     }
   };
 
@@ -67,7 +66,6 @@ const VoiceRecorder = ({ onSend, disabled }) => {
   const processAudio = async (blob) => {
     setIsProcessing(true);
     
-    // Convert to base64
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64Audio = reader.result;
@@ -79,7 +77,6 @@ const VoiceRecorder = ({ onSend, disabled }) => {
     reader.readAsDataURL(blob);
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);

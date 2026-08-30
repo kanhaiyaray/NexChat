@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+﻿import { Routes, Route, Navigate } from 'react-router-dom'
 import { SignIn, SignUp } from '@clerk/clerk-react'
 import Chat from './components/Chat'
 import LandingPage from './pages/LandingPage'

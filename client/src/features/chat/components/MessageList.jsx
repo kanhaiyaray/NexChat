@@ -21,6 +21,8 @@ const MessageList = ({
   editSaving,
   roomId,
   clerkId,
+  highlightedMessageId = '',
+  activeSearchTerm = '',
 }) => {
   const displayRoom = 'private';
   const { unreadCount, markRoomAsRead, markAsRead } = useUnread(roomId, clerkId);
@@ -29,7 +31,6 @@ const MessageList = ({
 
   // Find first unread message
   const firstUnread = messages.find(m => {
-    // Check if message is unread (not in readMessages)
     return !m.readBy?.includes(username);
   });
 
@@ -55,11 +56,22 @@ const MessageList = ({
     markAsRead(msgId);
   };
 
+  const highlightText = (text, query) => {
+    if (!query.trim() || !text) return text;
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, i) => {
+      if (part.toLowerCase() === query.toLowerCase()) {
+        return <mark key={i} className="match-highlight targeted">{part}</mark>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   return (
     <>
       <div className="date-divider">PRIVATE CHAT · #{displayRoom}</div>
 
-      {/* 🆕 Jump to unread button */}
       {unreadCount > 0 && (
         <button 
           className="jump-to-unread-btn"
@@ -75,11 +87,9 @@ const MessageList = ({
         const showAvatar = index === 0 || messages[index - 1]?.sender !== msg.sender;
         const msgReactions = reactions[msg.id] || {};
         const isEditing = editingMessageId === msg.id;
-        
-        // 🆕 Check if message is unread
         const isUnread = !msg.readBy?.includes(username) && !isOwn;
+        const isTargeted = highlightedMessageId === msg.id;
 
-        // Set ref for first unread
         const msgRef = isUnread && firstUnread?.id === msg.id ? firstUnreadRef : null;
 
         return (
@@ -111,6 +121,9 @@ const MessageList = ({
               username={username}
               isUnread={isUnread}
               onVisible={() => handleMessageVisible(msg.id)}
+              isTargeted={isTargeted}
+              activeSearchTerm={activeSearchTerm}
+              highlightText={highlightText}
             />
           </div>
         );

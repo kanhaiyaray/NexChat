@@ -11,6 +11,8 @@ import { uploadImage, uploadVoice, isCloudinaryConfigured } from '../config/clou
 import { roomState } from '../state/roomState.js';
 import { Message } from '../models/index.js';
 import { ReadStatus } from '../models/index.js';
+import { resolveCode } from '../services/room.service.js';
+import { UserProfile, ReadReceipt } from '../models/index.js';
 
 export const messageHandlers = (socket, io) => {
   const currentRoom = () => socket.currentRoom;
@@ -60,7 +62,7 @@ export const messageHandlers = (socket, io) => {
 
         io.to(room).emit('receive_message', finalMessage);
 
-        // 🆕 Update unread counts for all users in room (except sender)
+        // Update unread counts for all users in room (except sender)
         const roomUsers = roomState.getUsers(room);
         for (const user of roomUsers) {
           if (user.username !== sender) {
@@ -133,7 +135,7 @@ export const messageHandlers = (socket, io) => {
 
         io.to(room).emit('receive_image', finalMessage);
 
-        // 🆕 Update unread counts
+        // Update unread counts
         const roomUsers = roomState.getUsers(room);
         for (const user of roomUsers) {
           if (user.username !== sender) {
@@ -207,7 +209,7 @@ export const messageHandlers = (socket, io) => {
 
         io.to(room).emit('receive_voice', finalMessage);
 
-        // 🆕 Update unread counts
+        // Update unread counts
         const roomUsers = roomState.getUsers(room);
         for (const user of roomUsers) {
           if (user.username !== sender) {
@@ -405,9 +407,8 @@ export const messageHandlers = (socket, io) => {
       }
     },
 
-    // ─── 🆕 UNREAD HANDLERS ──────────────────────────────────────────────────
+    // ─── UNREAD HANDLERS ──────────────────────────────────────────────────
 
-    // Mark messages as read
     mark_read: async ({ room, messageId, userId }) => {
       if (!room || !messageId || !userId) {
         socket.emit('mark_read_error', { message: 'Missing required fields' });
@@ -446,7 +447,6 @@ export const messageHandlers = (socket, io) => {
       }
     },
 
-    // Get unread status for a user in a room
     get_unread_status: async ({ room, userId }) => {
       if (!room || !userId) {
         socket.emit('unread_status_error', { message: 'Missing required fields' });
@@ -474,7 +474,6 @@ export const messageHandlers = (socket, io) => {
       }
     },
 
-    // Mark entire room as read
     mark_room_read: async ({ room, userId }) => {
       if (!room || !userId) {
         socket.emit('mark_read_error', { message: 'Missing required fields' });

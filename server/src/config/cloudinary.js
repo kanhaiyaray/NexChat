@@ -50,6 +50,23 @@ export const uploadAvatar = async (base64Image, options = {}) => {
   return cloudinary.uploader.upload(base64Image, { ...defaultOptions, ...options });
 };
 
+export const uploadFile = async (fileBuffer, options = {}) => {
+  const defaultOptions = {
+    folder: 'nexchat_files',
+    resource_type: 'auto',
+  };
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { ...defaultOptions, ...options },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    uploadStream.end(fileBuffer);
+  });
+};
+
 export const isCloudinaryConfigured = () => {
   return !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY);
 };

@@ -109,18 +109,20 @@ export const getMessageTypes = async () => {
     }
   }
 
-  const [textCount, imageCount, voiceCount] = await Promise.all([
+  const [textCount, imageCount, voiceCount, fileCount] = await Promise.all([
     Message.countDocuments({ type: 'text' }),
     Message.countDocuments({ type: 'image' }),
-    Message.countDocuments({ type: 'voice' })
+    Message.countDocuments({ type: 'voice' }),
+    Message.countDocuments({ type: 'file' })
   ]);
 
-  const total = textCount + imageCount + voiceCount;
+  const total = textCount + imageCount + voiceCount + fileCount;
   const data = {
     data: [
       { name: 'text', value: textCount, percentage: total ? ((textCount / total) * 100).toFixed(1) : 0 },
       { name: 'image', value: imageCount, percentage: total ? ((imageCount / total) * 100).toFixed(1) : 0 },
-      { name: 'voice', value: voiceCount, percentage: total ? ((voiceCount / total) * 100).toFixed(1) : 0 }
+      { name: 'voice', value: voiceCount, percentage: total ? ((voiceCount / total) * 100).toFixed(1) : 0 },
+      { name: 'file', value: fileCount, percentage: total ? ((fileCount / total) * 100).toFixed(1) : 0 }
     ]
   };
 

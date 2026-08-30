@@ -62,6 +62,22 @@
   getRoomCount() {
     return Object.keys(this.rooms).length;
   }
+
+  getConnection(socketId) {
+    return this.connections[socketId] || null;
+  }
+
+  getAllUsers() {
+    const allUsers = [];
+    Object.values(this.rooms).forEach(roomUsers => {
+      roomUsers.forEach(user => {
+        if (!allUsers.find(u => u.username === user.username)) {
+          allUsers.push(user);
+        }
+      });
+    });
+    return allUsers;
+  }
 }
 
 export const roomState = new RoomState();

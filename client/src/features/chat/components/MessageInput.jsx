@@ -15,13 +15,16 @@ const MessageInput = ({
   showEmoji,
   setShowEmoji,
   disabled,
-  room,
-  sender,
-  clerkId,
+  roomId,
+  username,
+  clerkUser,
   onFileUploadComplete,
   onFileUploadError,
 }) => {
   const inputRef = useRef(null);
+  const [imgUploading, setImgUploading] = useState(false);
+  const [voiceUploading, setVoiceUploading] = useState(false);
+  const [fileUploading, setFileUploading] = useState(false);
 
   const handleSend = () => {
     if (messageText.trim()) {
@@ -34,6 +37,28 @@ const MessageInput = ({
     inputRef.current?.focus();
   };
 
+  const handleTyping = () => {
+    if (onTyping) onTyping();
+  };
+
+  const sendVoice = async (audioBase64, duration) => {
+    setVoiceUploading(true);
+    if (onSendVoice) {
+      await onSendVoice(audioBase64, duration);
+    }
+    setVoiceUploading(false);
+  };
+
+  const handleFileUploadComplete = (data) => {
+    setFileUploading(false);
+    if (onFileUploadComplete) onFileUploadComplete(data);
+  };
+
+  const handleFileUploadError = (error) => {
+    setFileUploading(false);
+    if (onFileUploadError) onFileUploadError(error);
+  };
+
   return (
     <div className="input-bar" style={{ position: 'relative' }}>
       {uploading && (
@@ -42,9 +67,26 @@ const MessageInput = ({
           Uploading...
         </div>
       )}
+      {imgUploading && (
+        <div className="uploading-indicator">
+          <span className="spin-icon">⏳</span>
+          Uploading image...
+        </div>
+      )}
+      {voiceUploading && (
+        <div className="uploading-indicator">
+          <span className="spin-icon">⏳</span>
+          Uploading voice message...
+        </div>
+      )}
+      {fileUploading && (
+        <div className="uploading-indicator">
+          <span className="spin-icon">⏳</span>
+          Uploading file...
+        </div>
+      )}
 
       <div className="input-row">
-        {/* 🆕 SINGLE FILE UPLOAD BUTTON - handles both images and documents */}
         <FileUpload
           room={roomId}
           sender={username}
@@ -58,25 +100,26 @@ const MessageInput = ({
           ref={inputRef}
           className="msg-input"
           rows={1}
-          value={message}
+          value={messageText}
           placeholder="Message your private group..."
           onChange={(event) => {
-            setMessage(event.target.value);
+            setMessageText(event.target.value);
             handleTyping();
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              sendMessage();
+              handleSend();
             }
           }}
           style={{ height: "42px", lineHeight: "18px", paddingTop: "12px" }}
+          disabled={disabled}
         />
         <VoiceRecorder onSend={sendVoice} disabled={voiceUploading || fileUploading} />
         <button className="icon-btn" type="button" onClick={() => setShowEmoji((current) => !current)} title="Emoji">
           😊
         </button>
-        <button className="icon-btn accent" type="button" onClick={sendMessage} title="Send">
+        <button className="icon-btn accent" type="button" onClick={handleSend} title="Send" disabled={disabled}>
           ➤
         </button>
       </div>

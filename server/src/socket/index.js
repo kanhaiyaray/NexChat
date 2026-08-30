@@ -2,6 +2,7 @@
 import { messageHandlers } from './message.handlers.js';
 import { adminHandlers } from './admin.handlers.js';
 import { roomState } from '../state/roomState.js';
+import { UserProfile } from '../models/index.js';
 
 export const initSocket = (io) => {
   io.on('connection', (socket) => {

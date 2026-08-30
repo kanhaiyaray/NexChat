@@ -25,7 +25,9 @@ import {
   getTopUsers,
   getActivityHeatmap,
 } from '../services/message.service.js';
+import { getUserGrowth, getRoomGrowth } from '../services/analytics.service.js';
 import { UserProfile, PrivateRoom, Message, AdminAudit } from '../models/index.js';
+import { roomState } from '../state/roomState.js';
 
 const router = express.Router();
 
@@ -70,8 +72,7 @@ router.get('/users', isAdmin, async (req, res) => {
 
     // Get online users from room state
     const onlineUsernames = new Set();
-    const rooms = {}; // This should be imported from roomState
-    Object.values(rooms).forEach(roomUsers => roomUsers.forEach(u => onlineUsernames.add(u.username)));
+    Object.values(roomState.rooms).forEach(roomUsers => roomUsers.forEach(u => onlineUsernames.add(u.username)));
 
     const enriched = users.map(u => ({
       ...u,
@@ -249,7 +250,7 @@ router.get('/analytics/users', isAdmin, async (req, res) => {
     const total = await UserProfile.countDocuments();
     const active = await UserProfile.countDocuments({ status: 'active' });
     const banned = await UserProfile.countDocuments({ status: 'banned' });
-    const online = Object.values(rooms).flat().length;
+    const online = Object.values(roomState.rooms).flat().length;
 
     res.json({ total, active, banned, online });
   } catch (err) {

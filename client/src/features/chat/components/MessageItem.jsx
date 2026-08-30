@@ -26,6 +26,9 @@ const MessageItem = ({
   username = '',
   isUnread = false,
   onVisible = null,
+  isTargeted = false,
+  activeSearchTerm = '',
+  highlightText = null,
 }) => {
   const [imageLightbox, setImageLightbox] = useState(null);
   const msgRef = useRef(null);
@@ -73,6 +76,38 @@ const MessageItem = ({
 
     return () => observer.disconnect();
   }, [isUnread, onVisible]);
+
+  const renderContent = () => {
+    if (message.type === 'image') {
+      return (
+        <img
+          className="msg-img"
+          src={message.imageUrl}
+          alt="shared"
+          onClick={() => setImageLightbox(message.imageUrl)}
+        />
+      );
+    }
+    if (message.type === 'voice') {
+      return <VoicePlayer audioUrl={message.voiceUrl} duration={message.voiceDuration} />;
+    }
+    if (message.type === 'file') {
+      return (
+        <FilePreview
+          file={{
+            fileName: message.fileName,
+            fileSize: message.fileSize,
+            fileType: message.fileType,
+            fileUrl: message.fileUrl
+          }}
+        />
+      );
+    }
+    if (isTargeted && activeSearchTerm && highlightText) {
+      return highlightText(message.message, activeSearchTerm);
+    }
+    return message.message;
+  };
 
   return (
     <div 
@@ -133,37 +168,12 @@ const MessageItem = ({
             </div>
           ) : (
             <div
-              className={`msg-bubble ${isOwn ? 'own' : 'other'} ${isThreadParent ? 'thread-parent' : ''}`}
+              className={`msg-bubble ${isOwn ? 'own' : 'other'} ${isThreadParent ? 'thread-parent' : ''} ${isTargeted ? 'targeted' : ''}`}
               onContextMenu={(e) => onContextMenu?.(e, message.id, message.sender)}
               onDoubleClick={() => setActivePicker?.(activePicker === message.id ? null : message.id)}
               style={{ cursor: 'pointer' }}
             >
-              {message.type === 'image' ? (
-                <>
-                  <img
-                    className="msg-img"
-                    src={message.imageUrl}
-                    alt="shared"
-                    onClick={() => setImageLightbox(message.imageUrl)}
-                  />
-                </>
-              ) : message.type === 'voice' ? (
-                <VoicePlayer
-                  audioUrl={message.voiceUrl}
-                  duration={message.voiceDuration}
-                />
-              ) : message.type === 'file' ? (
-                <FilePreview
-                  file={{
-                    fileName: message.fileName,
-                    fileSize: message.fileSize,
-                    fileType: message.fileType,
-                    fileUrl: message.fileUrl
-                  }}
-                />
-              ) : (
-                message.message
-              )}
+              {renderContent()}
             </div>
           )}
 
