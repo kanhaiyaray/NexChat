@@ -1,30 +1,18 @@
-﻿# ──────────────────────────────────────────────────────────────────
-# CLIENT-SPECIFIC .gitignore
-# ──────────────────────────────────────────────────────────────────
+﻿# ================================================================
+# CLIENT .gitignore - NexChat Frontend
+# ================================================================
 
-# Dependencies
+# ──────────────────────────────────────────────────────────────────
+# DEPENDENCIES
+# ──────────────────────────────────────────────────────────────────
 node_modules/
 .pnpm-store/
 .yarn/
 .yarn-cache/
-.yarn-metadata.json
-.yarn-integrity
 
-# Build outputs
-dist/
-build/
-.vite/
-*.tsbuildinfo
-.vercel/
-.vercel/*
-.vercel_cache/
-vercel-build/
-.netlify/
-.netlify-build/
-.vercel/
-.rendermeta/
-
-# Environment
+# ──────────────────────────────────────────────────────────────────
+# ENVIRONMENT VARIABLES
+# ──────────────────────────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
@@ -33,52 +21,76 @@ vercel-build/
 .env.test
 .env.staging
 
-# Vite
-.vite/
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
-*.vite
+# Keep example files
+!.env.example
 
-# React
-.eslintcache
-.prettiercache
-.stylelintcache
-.tscache/
-.cache-loader/
-.parcel-cache/
+# ──────────────────────────────────────────────────────────────────
+# BUILD OUTPUTS
+# ──────────────────────────────────────────────────────────────────
+dist/
+build/
+.vite/
 .next/
 .nuxt/
 .svelte-kit/
 .astro/
+*.tsbuildinfo
 
-# Logs
+# ──────────────────────────────────────────────────────────────────
+# LOGS
+# ──────────────────────────────────────────────────────────────────
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 client.log
 debug.log
 error.log
-combined.log
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-*.tmp
-*.temp
-*.swp
-*.swo
-*~
-~$*
-*.lock
-*.pid
-*.seed
-*.pid.lock
+# ──────────────────────────────────────────────────────────────────
+# UPLOADS
+# ──────────────────────────────────────────────────────────────────
+uploads/
+media/
+files/
+temp/
+public/uploads/
 
-# IDE
+# ──────────────────────────────────────────────────────────────────
+# TEST COVERAGE
+# ──────────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+test-report.xml
+coverage.xml
+junit.xml
+
+# ──────────────────────────────────────────────────────────────────
+# SECURITY
+# ──────────────────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.cert
+*.secret
+credentials.json
+service-account.json
+secrets.json
+secrets.yaml
+secrets.yml
+
+# ──────────────────────────────────────────────────────────────────
+# DEPLOYMENT CACHE
+# ──────────────────────────────────────────────────────────────────
+.vercel/
+.vercel_cache/
+.netlify/
+
+# ──────────────────────────────────────────────────────────────────
+# IDE FILES
+# ──────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.iml
@@ -86,95 +98,30 @@ desktop.ini
 *.ipr
 *.sublime-project
 *.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Test
-coverage/
-.nyc_output/
-test-results/
-jest/
-__tests__/
-__mocks__/
-*.test.js
-*.spec.js
-*.test.ts
-*.spec.ts
-*.test.tsx
-*.spec.tsx
-e2e/
-cypress/
-.cypress/
-test-report.xml
-coverage.xml
-junit.xml
+# ──────────────────────────────────────────────────────────────────
+# TEMPORARY FILES
+# ──────────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.sav
+*.pid
+*.seed
 
-# Uploads
-uploads/
-temp/
-media/
-files/
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.webp
-*.svg
-*.mp3
-*.wav
-*.mp4
-*.webm
-*.mov
-*.avi
-*.mkv
-*.flv
-*.ogv
-*.ogg
-*.opus
-*.wma
-*.flac
-*.aac
-*.m4a
-*.3gp
-*.3g2
-*.zip
-*.rar
-*.7z
-*.tar
-*.gz
-*.bz2
-*.xz
-*.iso
-*.dmg
-*.exe
-*.msi
-*.deb
-*.rpm
-*.apk
-*.ipa
-
-# Secrets
-*.secret
-*.key
-*.pem
-*.crt
-*.cert
-*.p12
-*.pfx
-*.csr
-*.private
-*.pub
-*.asc
-*.gpg
-*.pgp
-*.ssh
-credentials.json
-service-account.json
-*.credentials
-*.creds
-secrets.json
-secrets.yaml
-secrets.yml
-
-# Cache
+# ──────────────────────────────────────────────────────────────────
+# CACHE
+# ──────────────────────────────────────────────────────────────────
 .cache/
 .eslintcache
 .prettiercache
@@ -182,58 +129,25 @@ secrets.yml
 .tscache/
 .cache-loader/
 .parcel-cache/
-.vercel_cache/
-.netlify-cache/
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-*.dump
-*.sql
-*.backup
-*.restore
-data/
-dump/
-db/
+# ──────────────────────────────────────────────────────────────────
+# CLERK AUTH
+# ──────────────────────────────────────────────────────────────────
+.clerk/
+clerk-*.pem
+clerk-*.key
 
-# NPM
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Misc
-*.bak
-*.backup
-*.old
-*.orig
-*.save
-*.sav
-*.back
-*.bakup
-*.dump
-*.debug
-*.trace
-*.profile
+# ──────────────────────────────────────────────────────────────────
+# MISC
+# ──────────────────────────────────────────────────────────────────
 *.heapsnapshot
 *.cpuprofile
 *.heapprofile
+*.profile
+*.trace
 *.export.txt
 *.export.json
-*.export.csv
-*.export.xlsx
 .tern-port
-
-# Clerk
-.clerk/
-.clerk/*
-clerk-*.pem
-clerk-*.key
 
 # ================================================================
 # END OF CLIENT .gitignore

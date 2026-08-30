@@ -1,80 +1,39 @@
 ﻿# ================================================================
-# NEXCHAT - COMPLETE .gitignore
-# Covers all environments: development, production, deployment
+# ROOT .gitignore - NexChat Project
 # ================================================================
 
 # ──────────────────────────────────────────────────────────────────
 # DEPENDENCIES
 # ──────────────────────────────────────────────────────────────────
-client/node_modules/
-server/node_modules/
 node_modules/
 .pnpm-store/
 .yarn/
 .yarn-cache/
-.yarn-metadata.json
-.yarn-integrity
 
 # ──────────────────────────────────────────────────────────────────
-# ENVIRONMENT VARIABLES
+# ENVIRONMENT VARIABLES (secrets)
 # ──────────────────────────────────────────────────────────────────
-# Server
-server/.env
-server/.env.local
-server/.env.*.local
-server/.env.production
-server/.env.development
-server/.env.test
-server/.env.staging
-server/.env.uat
-
-# Client
-client/.env
-client/.env.local
-client/.env.*.local
-client/.env.production
-client/.env.development
-client/.env.staging
-
-# Root
 .env
 .env.local
 .env.*.local
 .env.production
 .env.development
-.env.staging
 .env.test
+.env.staging
 
-# Environment example files (keep these)
+# Keep example files
 !.env.example
 !.env.production.template
 
 # ──────────────────────────────────────────────────────────────────
 # BUILD OUTPUTS
 # ──────────────────────────────────────────────────────────────────
-# Client
-client/dist/
-client/build/
-client/.vite/
-client/*.tsbuildinfo
-client/.svelte-kit/
-client/.next/
-client/out/
-client/.nuxt/
-
-# Server
-server/dist/
-server/build/
-server/*.tsbuildinfo
-server/.tsbuildinfo
-
-# Root
 dist/
 build/
 *.tsbuildinfo
-out/
 .next/
 .nuxt/
+.svelte-kit/
 
 # ──────────────────────────────────────────────────────────────────
 # LOGS
@@ -83,902 +42,137 @@ logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
-server/*.log
-client/*.log
-*.log.*
-debug.log
-error.log
-combined.log
-pm2-*.log
-pm2.log
-.pm2/
 
 # ──────────────────────────────────────────────────────────────────
-# OS METADATA
+# UPLOADS (user-generated content)
 # ──────────────────────────────────────────────────────────────────
-# macOS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-Desktop.ini
-*.swp
-*.swo
-*~
-~$*
-*.tmp
-*.temp
-*.lock
-*.lock.*
-*.log
-*.pid
-*.seed
-*.pid.lock
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-._.DS_Store
-.Spotlight-V100
-.Trashes
-.fseventsd
-.directory
-.VolumeIcon.icns
-
-# Windows
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.db
-*.stackdump
-[Dd]esktop.ini
-$RECYCLE.BIN/
-*.cab
-*.msi
-*.msix
-*.msm
-*.msp
-*.lnk
-
-# Linux
-*~
-.directory
-.Trash-*
-.trashinfo
-.trash
-.localized
-.Trash
-
-# ──────────────────────────────────────────────────────────────────
-# IDE / EDITOR FILES
-# ──────────────────────────────────────────────────────────────────
-# VS Code
-.vscode/
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-*.code-workspace
-.vscode-test/
-.vscode-server/
-.vscode-server-insiders/
-
-# IntelliJ / WebStorm / PyCharm
-.idea/
-*.iml
-*.iws
-*.ipr
-out/
-.idea_modules/
-.idea/
-.idea/workspace.xml
-.idea/tasks.xml
-.idea/dataSources.local.xml
-.idea/dataSources/
-.idea/shelf/
-.idea/dictionaries/
-.idea/vcs.xml
-.idea/jsLibraryMappings.xml
-.idea/modules.xml
-.idea/misc.xml
-.idea/inspectionProfiles/
-*.iws
-*.iml
-*.ipr
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-*.sublime-settings
-.sublime/
-
-# Atom
-.atom/
-*.atom
-.config/
-.apm/
-.atom-build.json
-
-# Vim
-*.swp
-*.swo
-*~
-*.un~
-.vim/
-.vimrc
-.viminfo
-.nvim/
-.Neovim/
-
-# Emacs
-*~
-\#*#
-.\#*
-/.emacs.desktop
-/.emacs.desktop.lock
-*.elc
-auto-save-list
-tramp
-.\#*
-
-# JetBrains
-.idea/
-*.iml
-*.iws
-*.ipr
-.idea_modules/
-out/
-.idea/
-.classpath
-.project
-.settings/
-bin/
-target/
-
-# ──────────────────────────────────────────────────────────────────
-# TEMPORARY FILES
-# ──────────────────────────────────────────────────────────────────
-*.tmp
-*.temp
-*.cache
-*.pid
-*.seed
-*.pid.lock
-output.txt
-nexchat-codebase-export.txt
-codebase-export.txt
-codebase-export.json
-*.bak
-*.backup
-*.old
-*.orig
-*.save
-*.sav
-*.back
-*.bakup
-*.tmp2
-*.temp2
-
-# ──────────────────────────────────────────────────────────────────
-# DEPLOYMENT & HOSTING
-# ──────────────────────────────────────────────────────────────────
-# Vercel
-.vercel/
-.vercel/*
-!.vercel/project.json
-vercel.json
-client/vercel.json
-*.vercel
-.vercel_cache/
-vercel-build/
-
-# Render
-.render/
-.render/*
-*.render
-.render/
-.rendermeta/
-
-# Netlify
-.netlify/
-.netlify-build/
-netlify-build/
-dist/
-
-# Heroku
-.heroku/
-*.slug
-.slugignore
-.herokuapp.com
-
-# Railway
-.railway/
-railway.json
-
-# Fly.io
-.fly/
-fly.toml
-
-# Cloudflare
-.cloudflare/
-wrangler.toml
-.workers/
-
-# ──────────────────────────────────────────────────────────────────
-# DATABASE
-# ──────────────────────────────────────────────────────────────────
-data/
-mongodb-data/
-mongo-data/
-*.mongodb
-*.bson
-*.jsonl
-dump/
-db/
-mongod.lock
-storage/
-*.db
-*.sqlite
-*.sqlite3
-*.sql
-*.dump
-*.backup
-*.restore
-*.mongo
-*.mongodb
-.gdbm
-*.db-journal
-*.db-wal
-*.db-shm
-
-# ──────────────────────────────────────────────────────────────────
-# UPLOADS / MEDIA / FILES
-# ──────────────────────────────────────────────────────────────────
-server/uploads/
-server/media/
-server/public/uploads/
-server/public/media/
-server/files/
-server/temp/
-client/public/uploads/
-client/uploads/
 uploads/
 media/
 files/
 temp/
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.webp
-*.svg
-*.mp3
-*.wav
-*.mp4
-*.webm
-*.mov
-*.avi
-*.mkv
-*.flv
-*.m4v
-*.ogv
-*.ogg
-*.opus
-*.wma
-*.flac
-*.aac
-*.m4a
-*.3gp
-*.3g2
-*.zip
-*.rar
-*.7z
-*.tar
-*.gz
-*.bz2
-*.xz
-*.iso
-*.dmg
-*.exe
-*.msi
-*.deb
-*.rpm
-*.apk
-*.ipa
+
+# ──────────────────────────────────────────────────────────────────
+# DATABASE
+# ──────────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/
+dump/
+db/
+mongodb-data/
+mongo-data/
+mongod.lock
 
 # ──────────────────────────────────────────────────────────────────
 # TEST COVERAGE
 # ──────────────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
-*.lcov
-*.coverage
 test-results/
-jest/
-__tests__/
-__mocks__/
-*.test.js
-*.spec.js
-*.test.ts
-*.spec.ts
-*.test.tsx
-*.spec.tsx
-e2e/
-cypress/
-.cypress/
 test-report.xml
 coverage.xml
 junit.xml
-tests/
 
 # ──────────────────────────────────────────────────────────────────
-# PACKAGE MANAGER LOCK FILES (Optional)
+# SECURITY (NEVER commit)
 # ──────────────────────────────────────────────────────────────────
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-bun.lock
-deno.lock
-Cargo.lock
-composer.lock
-Gemfile.lock
-podfile.lock
-mix.lock
-poetry.lock
-Pipfile.lock
-requirements.lock
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+*.csr
+*.secret
+credentials.json
+service-account.json
+secrets.json
+secrets.yaml
+secrets.yml
+jwt.key
+jwt.pub
+.keystore
+keystore.jks
 
 # ──────────────────────────────────────────────────────────────────
-# MISC
+# DEPLOYMENT CACHE
 # ──────────────────────────────────────────────────────────────────
-# Backup files
+.vercel/
+.vercel_cache/
+.netlify/
+.render/
+.railway/
+.fly/
+.cloudflare/
+
+# ──────────────────────────────────────────────────────────────────
+# IDE FILES
+# ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ──────────────────────────────────────────────────────────────────
+# TEMPORARY FILES
+# ──────────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
 *.bak
 *.backup
 *.old
 *.orig
 *.save
 *.sav
-*.back
-*.bakup
-
-# Dump files
-*.dump
-*.sql
-*.sqlite
-*.sqlite3
-
-# Debug files
-*.log
-*.debug
-*.trace
-*.profile
-*.heapsnapshot
-*.cpuprofile
-*.heapprofile
-
-# Profiling
-*.cpuprofile
-*.heapsnapshot
-*.heapprofile
-*.prof
-*.gcov
-*.gcda
-*.gcno
-
-# Coverage
-*.cover
-*.coverage
-*.lcov
-*.nyc_output
+*.pid
+*.seed
+*.pid.lock
 
 # ──────────────────────────────────────────────────────────────────
-# PROJECT-SPECIFIC
-# ──────────────────────────────────────────────────────────────────
-# Admin temp files
-server/src/scripts/*.tmp
-client/src/pages/admin/*.tmp
-server/src/scripts/*.temp
-client/src/pages/admin/*.temp
-
-# Backup of old files
-server/server.js.bak
-server/server.js.backup
-server/server-refactored.js
-server/server-old.js
-client/src/components/Chat.jsx.bak
-client/src/components/Chat.jsx.backup
-client/src/components/Chat-old.jsx
-server/src/app.js.bak
-server/src/app.js.backup
-server/src/app-old.js
-
-# Export files
-*.export.txt
-*.export.json
-*.export.csv
-*.export.xlsx
-*.export.pdf
-
-# Documentation builds
-docs/_build/
-docs/build/
-docs/api/
-docs/html/
-docs/latex/
-docs/man/
-docs/texinfo/
-docs/_static/
-docs/_templates/
-
-# ──────────────────────────────────────────────────────────────────
-# SECURITY / SECRETS
-# ──────────────────────────────────────────────────────────────────
-*.secret
-*.key
-*.pem
-*.crt
-*.cert
-*.p12
-*.pfx
-*.csr
-*.private
-*.pub
-*.asc
-*.gpg
-*.pgp
-*.ssh
-*.pem
-*.der
-*.cer
-*.crl
-*.p7b
-*.p7c
-*.p7s
-*.spc
-*.pvk
-
-# Credentials files
-credentials.json
-service-account.json
-*.credentials
-*.creds
-secrets.json
-secrets.yaml
-secrets.yml
-*.secret.yaml
-*.secret.yml
-*.env.secret
-.keystore
-.gradle/
-keystore.jks
-jwt.key
-jwt.pub
-oauth.json
-oauth.credentials
-
-# ──────────────────────────────────────────────────────────────────
-# CI/CD
-# ──────────────────────────────────────────────────────────────────
-.github/
-.github/*
-!.github/workflows/
-!.github/workflows/deploy.yml
-.gitlab/
-.azure/
-.gitlab-ci.yml
-.azure-pipelines.yml
-.travis.yml
-.circleci/
-.circleci/*
-.jenkins/
-.drone.yml
-.gitlab/
-.teamcity/
-.buildkite/
-.github/workflows/*.bak
-
-# ──────────────────────────────────────────────────────────────────
-# DOCKER
-# ──────────────────────────────────────────────────────────────────
-docker-compose.override.yml
-docker-compose.*.yml
-!docker-compose.yml
-Dockerfile.*
-.dockerignore
-*.docker
-.docker/
-docker/
-*.container
-*.image
-*.tar
-*.tar.gz
-
-# ──────────────────────────────────────────────────────────────────
-# DEVELOPMENT CACHE
+# CACHE
 # ──────────────────────────────────────────────────────────────────
 .cache/
-.parcel-cache/
-.next/
-.nuxt/
-.svelte-kit/
 .eslintcache
 .prettiercache
 .stylelintcache
-.typescript-cache/
 .tscache/
 .cache-loader/
-.yarn/
-.npm/
-.bun/
-.vercel_cache/
-.netlify-cache/
-.pnpm-store/
-
-# ──────────────────────────────────────────────────────────────────
-# TURBO / MONOREPO
-# ──────────────────────────────────────────────────────────────────
+.parcel-cache/
 .turbo/
-node_modules/.cache/
-**/node_modules/.cache/
 .nx/
-nx.json
-.nx-deps/
-.nx-cache/
-.turbo-cache/
 
 # ──────────────────────────────────────────────────────────────────
-# WINDOWS / MAC SPECIFIC
+# PM2
 # ──────────────────────────────────────────────────────────────────
-# Windows
-*.dll
-*.exe
-*.sys
-*.bat
-*.cmd
-*.com
-*.scr
-*.cpl
-*.msc
-*.inf
-*.ini
-*.cfg
-*.config
-
-# Mac
-*.dmg
-*.app
-Icon?
-.Trashes
-.Spotlight-V100
-.fseventsd
-.DS_Store
-.VolumeIcon.icns
-.com.apple.timemachine.supported
-.com.apple.timemachine.donotpresent
-.com.apple.timemachine.restore
-.metadata_never_index
+.pm2/
+pm2-*.log
+pm2.log
+pm2.pid
 
 # ──────────────────────────────────────────────────────────────────
-# RUNTIME / STATE
+# MISC
 # ──────────────────────────────────────────────────────────────────
-*.runtime
-*.state
-*.pid
-*.socket
-*.sock
-*.pipe
-*.port
-*.session
-session.json
-session.txt
-*.state.json
-*.runtime.json
-
-# ──────────────────────────────────────────────────────────────────
-# CLI TOOLS
-# ──────────────────────────────────────────────────────────────────
-.terraform/
-*.tfstate
-*.tfstate.*
-.terraform.lock.hcl
-.terragrunt-cache/
-terragrunt.lock
-*.hcl
-*.tfvars
-.ansible/
-*.retry
-
-# ──────────────────────────────────────────────────────────────────
-# DATABASE / SEARCH
-# ──────────────────────────────────────────────────────────────────
-*.fts
-*.idx
-*.index
-*.db-shm
-*.db-wal
-*.journal
-*.mongodb
-*.mongod
-*.elasticsearch
-*.opensearch
-*.meilisearch
-*.typesense
-*.redis
-*.valkey
-
-# ──────────────────────────────────────────────────────────────────
-# MONITORING / APM
-# ──────────────────────────────────────────────────────────────────
-*.sentry
-*.datadog
-*.newrelic
-*.dynatrace
-*.appdynamics
-*.instana
-*.honeycomb
-*.lightstep
-*.elastic
-*.opentelemetry
-*.jaeger
-*.zipkin
-*.prometheus
-*.grafana
-*.kibana
-*.apm
+*.heapsnapshot
+*.cpuprofile
+*.heapprofile
+*.profile
 *.trace
-
-# ──────────────────────────────────────────────────────────────────
-# REACT / VITE SPECIFIC
-# ──────────────────────────────────────────────────────────────────
-client/.vite
-client/.vite/*
-client/build/
-client/dist/
-client/public/vite.svg
-client/.env.local
-client/.env.*.local
-client/.vercel
-
-# ──────────────────────────────────────────────────────────────────
-# NODE SPECIFIC
-# ──────────────────────────────────────────────────────────────────
-node_modules/.bin/
-node_modules/.cache/
-node_modules/.yarn-integrity
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-package-lock.json.bak
-yarn.lock.bak
-pnpm-lock.yaml.bak
-.npmrc
-.npmignore
-.npm
-
-# ──────────────────────────────────────────────────────────────────
-# MISCELLANEOUS
-# ──────────────────────────────────────────────────────────────────
-*.db
-*.sqlite
-*.sqlite3
-*.mdb
-*.accdb
-*.pdb
-*.sql
-*.dump
-*.backup
-*.restore
-*.tgz
-*.gz
-*.zip
-*.rar
-*.7z
-*.tar
-*.bz2
-*.xz
-*.deb
-*.rpm
-*.dmg
-*.iso
-*.msi
-*.exe
-*.bat
-*.cmd
-*.ps1
-*.sh
-*.bash
-*.zsh
-*.fish
-*.ps1
-*.psm1
-*.psd1
-*.vbs
-*.js
-*.ts
-*.tsx
-*.jsx
-*.coffee
-*.litcoffee
-*.cson
-*.json
-*.yaml
-*.yml
-*.toml
-*.xml
-*.html
-*.htm
-*.xhtml
-*.css
-*.scss
-*.sass
-*.less
-*.styl
-*.stylus
-*.md
-*.markdown
-*.mdown
-*.mkd
-*.txt
-*.text
-*.rtf
-*.doc
-*.docx
-*.xls
-*.xlsx
-*.ppt
-*.pptx
-*.pdf
-*.odt
-*.ods
-*.odp
-*.rtf
-*.tex
-*.bib
-*.aux
-*.log
-*.out
-*.toc
-*.lof
-*.lot
-*.idx
-*.ilg
-*.ind
-*.bbl
-*.blg
-*.synctex.gz
-
-# ──────────────────────────────────────────────────────────────────
-# CUSTOM RULES
-# ──────────────────────────────────────────────────────────────────
-# Ignore all .env files except .env.example
-*.env
-!.env.example
-!.env.production.template
-
-# Ignore all .log files except .gitkeep
-*.log
-!.gitkeep
-
-# Ignore all .tmp files except .gitkeep
-*.tmp
-!.gitkeep
-
-# Ignore all .cache files except .gitkeep
-*.cache
-!.gitkeep
-
-# Keep empty directories
-!*/**/.gitkeep
-
-# Ignore specific large files
-*.mp4
-*.mov
-*.avi
-*.mkv
-*.flv
-*.ogv
-*.webm
-*.3gp
-*.3g2
-*.m4v
-*.m2v
-*.mpe
-*.mpeg
-*.mpg
-*.wmv
-*.asf
-*.asx
-*.rm
-*.ram
-*.rv
-*.qt
-*.dv
-*.divx
-*.xvid
-*.h264
-*.hevc
-*.av1
-*.vp9
-*.vp8
-*.avc
-*.hevc
-*.avif
-*.webp
-*.bmp
-*.tiff
-*.tif
-*.raw
-*.cr2
-*.nef
-*.arw
-*.dng
-*.orf
-*.rw2
-*.pef
-*.srw
-*.raf
-*.x3f
-*.mef
-*.mrw
-*.kdc
-*.dcr
-*.mos
-*.bay
-*.cap
-*.crw
-*.cii
-*.eip
-*.mdc
-*.mfw
-*.mrwref
-*.nrw
-*.p6
-*.p7
-*.p10
-*.p12
-*.p15
-*.p25
-*.p30
-*.p35
-*.p40
-*.p45
-*.p50
-*.p60
-*.p70
-*.p80
-*.p90
-*.p100
-*.p110
-*.p120
-*.p130
-*.p140
-*.p150
-*.p160
-*.p170
-*.p180
-*.p190
-*.p200
-*.p210
-*.p220
-*.p230
-*.p240
-*.p250
-*.p260
-*.p270
-*.p280
-*.p290
-*.p300
+*.export.txt
+*.export.json
+*.export.csv
+.tern-port
 
 # ================================================================
-# END OF .gitignore
+# END OF ROOT .gitignore
 # ================================================================

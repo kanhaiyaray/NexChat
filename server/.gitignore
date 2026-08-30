@@ -1,16 +1,18 @@
-﻿# ──────────────────────────────────────────────────────────────────
-# SERVER-SPECIFIC .gitignore
-# ──────────────────────────────────────────────────────────────────
+﻿# ================================================================
+# SERVER .gitignore - NexChat Backend
+# ================================================================
 
-# Dependencies
+# ──────────────────────────────────────────────────────────────────
+# DEPENDENCIES
+# ──────────────────────────────────────────────────────────────────
 node_modules/
 .pnpm-store/
 .yarn/
 .yarn-cache/
-.yarn-metadata.json
-.yarn-integrity
 
-# Environment
+# ──────────────────────────────────────────────────────────────────
+# ENVIRONMENT VARIABLES
+# ──────────────────────────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
@@ -20,20 +22,24 @@ node_modules/
 .env.staging
 .env.uat
 
-# Build outputs
+# Keep example files
+!.env.example
+!.env.production.template
+
+# ──────────────────────────────────────────────────────────────────
+# BUILD OUTPUTS
+# ──────────────────────────────────────────────────────────────────
 dist/
 build/
 *.tsbuildinfo
-.vercel/
-.vercel/*
-.render/
 
-# Logs
+# ──────────────────────────────────────────────────────────────────
+# LOGS
+# ──────────────────────────────────────────────────────────────────
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 server.log
 debug.log
@@ -43,66 +49,76 @@ pm2-*.log
 pm2.log
 .pm2/
 
-# Uploads
+# ──────────────────────────────────────────────────────────────────
+# UPLOADS
+# ──────────────────────────────────────────────────────────────────
 uploads/
-temp/
 media/
 files/
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.webp
-*.svg
-*.mp3
-*.wav
-*.mp4
-*.webm
-*.mov
-*.avi
-*.mkv
-*.flv
-*.ogv
-*.ogg
-*.opus
-*.wma
-*.flac
-*.aac
-*.m4a
-*.3gp
-*.3g2
-*.zip
-*.rar
-*.7z
-*.tar
-*.gz
-*.bz2
-*.xz
-*.iso
-*.dmg
-*.exe
-*.msi
-*.deb
-*.rpm
-*.apk
-*.ipa
+temp/
+public/uploads/
+public/media/
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-*.tmp
-*.temp
-*.swp
-*.swo
-*~
-~$*
-*.lock
-*.pid
-*.seed
-*.pid.lock
+# ──────────────────────────────────────────────────────────────────
+# DATABASE
+# ──────────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+data/
+dump/
+db/
+mongodb-data/
+mongo-data/
+mongod.lock
+storage/
 
-# IDE
+# ──────────────────────────────────────────────────────────────────
+# TEST COVERAGE
+# ──────────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+test-report.xml
+coverage.xml
+junit.xml
+
+# ──────────────────────────────────────────────────────────────────
+# SECURITY (NEVER commit)
+# ──────────────────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+*.csr
+*.secret
+credentials.json
+service-account.json
+secrets.json
+secrets.yaml
+secrets.yml
+*.credentials
+*.creds
+jwt.key
+jwt.pub
+.keystore
+keystore.jks
+oauth.json
+oauth.credentials
+
+# ──────────────────────────────────────────────────────────────────
+# DEPLOYMENT CACHE
+# ──────────────────────────────────────────────────────────────────
+.vercel/
+.render/
+.rendermeta/
+
+# ──────────────────────────────────────────────────────────────────
+# IDE FILES
+# ──────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.iml
@@ -110,57 +126,31 @@ desktop.ini
 *.ipr
 *.sublime-project
 *.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Test
-coverage/
-.nyc_output/
-test-results/
-jest/
-__tests__/
-__mocks__/
-*.test.js
-*.spec.js
-*.test.ts
-*.spec.ts
-
-# Secrets
-*.secret
-*.key
-*.pem
-*.crt
-*.cert
-*.p12
-*.pfx
-*.csr
-*.private
-*.pub
-*.asc
-*.gpg
-*.pgp
-*.ssh
-credentials.json
-service-account.json
-*.credentials
-*.creds
-secrets.json
-secrets.yaml
-secrets.yml
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-*.dump
-*.sql
+# ──────────────────────────────────────────────────────────────────
+# TEMPORARY FILES
+# ──────────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.bak
 *.backup
-*.restore
-data/
-dump/
-db/
-mongodb-data/
-mongo-data/
+*.old
+*.orig
+*.save
+*.sav
+*.pid
+*.seed
+*.pid.lock
 
-# Cache
+# ──────────────────────────────────────────────────────────────────
+# CACHE
+# ──────────────────────────────────────────────────────────────────
 .cache/
 .eslintcache
 .prettiercache
@@ -168,66 +158,27 @@ mongo-data/
 .tscache/
 .cache-loader/
 
-# Docker
-Dockerfile.*
-.dockerignore
-*.docker
-.docker/
-docker/
-*.container
-*.image
-*.tar
-*.tar.gz
+# ──────────────────────────────────────────────────────────────────
+# PM2
+# ──────────────────────────────────────────────────────────────────
+.pm2/
+pm2-*.log
+pm2.log
+pm2.pid
 
-# NPM
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# CI/CD
-.github/
-.gitlab/
-.azure/
-.gitlab-ci.yml
-.azure-pipelines.yml
-.travis.yml
-.circleci/
-.jenkins/
-.drone.yml
-.teamcity/
-
-# Misc
-*.bak
-*.backup
-*.old
-*.orig
-*.save
-*.sav
-*.back
-*.bakup
-*.dump
-*.debug
-*.trace
-*.profile
+# ──────────────────────────────────────────────────────────────────
+# MISC
+# ──────────────────────────────────────────────────────────────────
 *.heapsnapshot
 *.cpuprofile
 *.heapprofile
+*.profile
+*.trace
 *.export.txt
 *.export.json
 *.export.csv
 *.export.xlsx
 .tern-port
-
-# PM2
-logs/
-.pm2/
-pm2-*.log
-pm2.log
 
 # ================================================================
 # END OF SERVER .gitignore
