@@ -10,6 +10,7 @@ import { pinMessage, unpinMessage } from '../services/room.service.js';
 import { uploadImage, uploadVoice, isCloudinaryConfigured } from '../config/cloudinary.js';
 import { roomState } from '../state/roomState.js';
 import { Message } from '../models/index.js';
+import { ReadStatus } from '../models/index.js';
 
 export const messageHandlers = (socket, io) => {
   const currentRoom = () => socket.currentRoom;
@@ -58,6 +59,19 @@ export const messageHandlers = (socket, io) => {
         };
 
         io.to(room).emit('receive_message', finalMessage);
+
+        // 🆕 Update unread counts for all users in room (except sender)
+        const roomUsers = roomState.getUsers(room);
+        for (const user of roomUsers) {
+          if (user.username !== sender) {
+            await ReadStatus.findOneAndUpdate(
+              { room, userId: user.clerkId },
+              { $inc: { unreadCount: 1 } },
+              { upsert: true }
+            );
+          }
+        }
+
       } catch (err) {
         console.error('Message send error:', err.message);
         socket.emit('send_error', { message: err.message });
@@ -118,6 +132,19 @@ export const messageHandlers = (socket, io) => {
         };
 
         io.to(room).emit('receive_image', finalMessage);
+
+        // 🆕 Update unread counts
+        const roomUsers = roomState.getUsers(room);
+        for (const user of roomUsers) {
+          if (user.username !== sender) {
+            await ReadStatus.findOneAndUpdate(
+              { room, userId: user.clerkId },
+              { $inc: { unreadCount: 1 } },
+              { upsert: true }
+            );
+          }
+        }
+
       } catch (err) {
         console.error('Image upload error:', err.message);
         socket.emit('image_error', { message: 'Image upload failed. Check Cloudinary credentials.' });
@@ -179,6 +206,19 @@ export const messageHandlers = (socket, io) => {
         };
 
         io.to(room).emit('receive_voice', finalMessage);
+
+        // 🆕 Update unread counts
+        const roomUsers = roomState.getUsers(room);
+        for (const user of roomUsers) {
+          if (user.username !== sender) {
+            await ReadStatus.findOneAndUpdate(
+              { room, userId: user.clerkId },
+              { $inc: { unreadCount: 1 } },
+              { upsert: true }
+            );
+          }
+        }
+
       } catch (err) {
         console.error('Voice upload error:', err.message);
         socket.emit('voice_error', { message: 'Voice upload failed. Please try again.' });
@@ -365,7 +405,109 @@ export const messageHandlers = (socket, io) => {
       }
     },
 
-    // ─── 🆕 THREAD HANDLERS ──────────────────────────────────────────────────
+    // ─── 🆕 UNREAD HANDLERS ──────────────────────────────────────────────────
+
+    // Mark messages as read
+    mark_read: async ({ room, messageId, userId }) => {
+      if (!room || !messageId || !userId) {
+        socket.emit('mark_read_error', { message: 'Missing required fields' });
+        return;
+      }
+
+      try {
+        const status = await ReadStatus.findOneAndUpdate(
+          { room, userId },
+          { 
+            $set: { lastReadMessageId: messageId, lastReadTimestamp: new Date() },
+            $addToSet: { readMessages: messageId }
+          },
+          { upsert: true, new: true }
+        );
+
+        // Calculate unread count
+        const totalMessages = await Message.countDocuments({ room });
+        const unreadCount = Math.max(0, totalMessages - status.readMessages.length);
+        
+        await ReadStatus.findOneAndUpdate(
+          { room, userId },
+          { $set: { unreadCount } }
+        );
+
+        // Broadcast updated read status to room
+        io.to(room).emit('read_status_updated', { 
+          userId, 
+          messageId,
+          unreadCount
+        });
+
+      } catch (error) {
+        console.error('Mark read error:', error);
+        socket.emit('mark_read_error', { message: 'Failed to mark as read' });
+      }
+    },
+
+    // Get unread status for a user in a room
+    get_unread_status: async ({ room, userId }) => {
+      if (!room || !userId) {
+        socket.emit('unread_status_error', { message: 'Missing required fields' });
+        return;
+      }
+
+      try {
+        const status = await ReadStatus.findOne({ room, userId });
+        if (status) {
+          socket.emit('unread_status', { 
+            unreadCount: status.unreadCount || 0,
+            lastReadId: status.lastReadMessageId
+          });
+        } else {
+          // First time in room - all messages are unread
+          const total = await Message.countDocuments({ room });
+          socket.emit('unread_status', { 
+            unreadCount: total, 
+            lastReadId: null 
+          });
+        }
+      } catch (error) {
+        console.error('Get unread status error:', error);
+        socket.emit('unread_status_error', { message: 'Failed to get unread status' });
+      }
+    },
+
+    // Mark entire room as read
+    mark_room_read: async ({ room, userId }) => {
+      if (!room || !userId) {
+        socket.emit('mark_read_error', { message: 'Missing required fields' });
+        return;
+      }
+
+      try {
+        const lastMessage = await Message.findOne({ room })
+          .sort({ timestamp: -1 });
+        
+        if (lastMessage) {
+          await ReadStatus.findOneAndUpdate(
+            { room, userId },
+            { 
+              $set: { 
+                lastReadMessageId: lastMessage._id,
+                lastReadTimestamp: new Date(),
+                unreadCount: 0
+              },
+              $addToSet: { readMessages: lastMessage._id }
+            },
+            { upsert: true }
+          );
+        }
+
+        io.to(room).emit('room_marked_read', { userId });
+      } catch (error) {
+        console.error('Mark room read error:', error);
+        socket.emit('mark_read_error', { message: 'Failed to mark room as read' });
+      }
+    },
+
+    // ─── THREAD HANDLERS ──────────────────────────────────────────────────
 
     reply_message: async ({ room, parentId, message, sender, timestamp }) => {
       const roomId = room || currentRoom();

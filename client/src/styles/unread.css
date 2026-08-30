@@ -1,0 +1,121 @@
+﻿/* ─── Unread Message Styles ─── */
+
+/* Jump to unread button */
+.jump-to-unread-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 8px auto 16px;
+  padding: 10px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 214, 245, 0.2);
+  background: linear-gradient(135deg, rgba(61, 214, 245, 0.12), rgba(167, 139, 250, 0.12));
+  color: var(--cyan, #3dd6f5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(61, 214, 245, 0.06);
+}
+
+.jump-to-unread-btn:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, rgba(61, 214, 245, 0.2), rgba(167, 139, 250, 0.2));
+  box-shadow: 0 8px 24px rgba(61, 214, 245, 0.12);
+  border-color: rgba(61, 214, 245, 0.35);
+}
+
+.jump-to-unread-btn:active {
+  transform: scale(0.97);
+}
+
+.jump-arrow {
+  display: inline-block;
+  font-size: 16px;
+  animation: bounceDown 1.5s infinite;
+}
+
+@keyframes bounceDown {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4px); }
+}
+
+/* Unread dot on message wrapper */
+.msg-wrapper {
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.msg-wrapper.unread {
+  background: rgba(61, 214, 245, 0.04);
+  border-radius: 8px;
+  margin: 2px 0;
+  padding: 4px 0;
+}
+
+.unread-dot {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cyan, #3dd6f5);
+  box-shadow: 0 0 12px rgba(61, 214, 245, 0.4);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); }
+  50% { opacity: 0.7; transform: translateY(-50%) scale(1.2); }
+}
+
+/* Unread message highlight animation */
+.highlight-unread {
+  animation: highlightFlash 2s ease;
+}
+
+@keyframes highlightFlash {
+  0% { background: rgba(61, 214, 245, 0); }
+  20% { background: rgba(61, 214, 245, 0.15); }
+  80% { background: rgba(61, 214, 245, 0.05); }
+  100% { background: rgba(61, 214, 245, 0); }
+}
+
+/* Unread count badge in sidebar */
+.unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--cyan, #3dd6f5);
+  color: #070b14;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .jump-to-unread-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+    margin: 4px auto 12px;
+  }
+  
+  .unread-dot {
+    left: -4px;
+    width: 6px;
+    height: 6px;
+  }
+  
+  .msg-wrapper.unread {
+    padding: 2px 0;
+  }
+}
