@@ -1,0 +1,47 @@
+﻿{
+  "name": "nexchat",
+  "version": "2.0.0",
+  "private": true,
+  "description": "NexChat - Private Real-Time Chat Platform",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "cd server && npm install",
+    "build:client": "cd client && npm install && npm run build",
+    "start": "cd server && node server.js",
+    "preview": "cd client && npm run preview",
+    "deploy": "npm run build && echo 'Ready for deployment'",
+    "indexes": "cd server && npm run indexes",
+    "postinstall": "npm run build",
+    "clean": "rm -rf client/dist server/node_modules client/node_modules",
+    "docker:build": "docker build -t nexchat-server -f server/Dockerfile .",
+    "docker:run": "docker run -p 1000:1000 --env-file server/.env.production nexchat-server"
+  },
+  "keywords": [
+    "chat",
+    "realtime",
+    "socketio",
+    "react",
+    "express",
+    "mongodb"
+  ],
+  "author": "Kanhaiya Kumar <samkanhaiya@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kanhaiyaray/NexChat"
+  },
+  "bugs": {
+    "url": "https://github.com/kanhaiyaray/NexChat/issues"
+  },
+  "homepage": "https://nexchat-red.vercel.app"
+}

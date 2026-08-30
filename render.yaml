@@ -1,0 +1,104 @@
+﻿services:
+  # ─── BACKEND API SERVER ─────────────────────────────────────────────
+  - type: web
+    name: nexchat-server
+    runtime: node
+    repo: https://github.com/kanhaiyaray/NexChat
+    plan: starter
+    region: oregon
+    buildCommand: cd server && npm install
+    startCommand: cd server && node server.js
+    rootDir: server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 1000
+      - key: CLIENT_ORIGIN
+        fromGroup: nexchat-client-origin
+      - key: MONGODB_URI
+        fromGroup: nexchat-mongodb
+      - key: CLOUDINARY_CLOUD_NAME
+        fromGroup: nexchat-cloudinary
+      - key: CLOUDINARY_API_KEY
+        fromGroup: nexchat-cloudinary
+      - key: CLOUDINARY_API_SECRET
+        fromGroup: nexchat-cloudinary
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - server/**
+    numInstances: 1
+    envVars:
+      - key: RENDER_EXTERNAL_URL
+        value: https://nexchat-server.onrender.com
+
+  # ─── FRONTEND STATIC SITE ──────────────────────────────────────────
+  - type: static
+    name: nexchat-client
+    runtime: static
+    repo: https://github.com/kanhaiyaray/NexChat
+    buildCommand: cd client && npm install && npm run build
+    staticPublishPath: client/dist
+    rootDir: client
+    envVars:
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        fromGroup: nexchat-clerk
+      - key: VITE_SOCKET_URL
+        fromGroup: nexchat-server-url
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
+# ─── ENVIRONMENT VARIABLE GROUPS ────────────────────────────────────
+envVarGroups:
+  - name: nexchat-mongodb
+    envVars:
+      - key: MONGODB_URI
+        value: mongodb+srv://<user>:<password>@cluster.mongodb.net/nexchat_prod
+        sync: false
+
+  - name: nexchat-cloudinary
+    envVars:
+      - key: CLOUDINARY_CLOUD_NAME
+        value: your_cloud_name
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        value: your_api_key
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        value: your_api_secret
+        sync: false
+
+  - name: nexchat-clerk
+    envVars:
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        value: pk_test_your_publishable_key
+        sync: false
+
+  - name: nexchat-client-origin
+    envVars:
+      - key: CLIENT_ORIGIN
+        value: https://nexchat-client.onrender.com
+        sync: false
+
+  - name: nexchat-server-url
+    envVars:
+      - key: VITE_SOCKET_URL
+        value: https://nexchat-server.onrender.com
+        sync: false
