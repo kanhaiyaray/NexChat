@@ -1,56 +1,324 @@
-# Dependencies
+# ================================================================
+# NEXCHAT - .gitignore
+# Complete ignore file for modular NexChat codebase
+# ================================================================
+
+# ================================================================
+# DEPENDENCIES
+# ================================================================
 client/node_modules/
 server/node_modules/
+node_modules/
 
-# Environment variables
-client/.env
-client/.env.local
-client/.env.*.local
+# ================================================================
+# ENVIRONMENT VARIABLES
+# ================================================================
+# Server
 server/.env
 server/.env.local
 server/.env.*.local
+server/.env.production
+server/.env.development
+server/.env.test
 
-# Build outputs
+# Client
+client/.env
+client/.env.local
+client/.env.*.local
+client/.env.production
+client/.env.development
+
+# Root
+.env
+.env.local
+.env.*.local
+
+# Environment example files (keep these)
+!.env.example
+
+# ================================================================
+# BUILD OUTPUTS
+# ================================================================
+# Client
 client/dist/
 client/build/
-server/dist/
+client/.vite/
+client/*.tsbuildinfo
 
-# Logs
+# Server
+server/dist/
+server/build/
+server/*.tsbuildinfo
+
+# Root
+dist/
+build/
+*.tsbuildinfo
+
+# ================================================================
+# LOGS
+# ================================================================
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+server/*.log
+client/*.log
 
-# OS metadata
+# ================================================================
+# OS METADATA
+# ================================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+~$*
+*.tmp
+*.temp
 
-# IDE / editor files
+# ================================================================
+# IDE / EDITOR FILES
+# ================================================================
+# VS Code
 .vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ / WebStorm
 .idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Atom
+.atom/
+*.atom
+
+# Vim
 *.swp
 *.swo
 *~
 
-# Temporary files created by your export script
-output.txt
-
-# Vercel deployment cache (optional)
-.vercel/
-
-# MongoDB local data (if you ever run a local instance)
-data/
-mongodb-data/
-
-# Uploads (if you ever add local file storage)
-server/uploads/
-client/public/uploads/
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Misc
+# ================================================================
+# TEMPORARY FILES
+# ================================================================
+*.tmp
+*.temp
+*.cache
 *.pid
 *.seed
 *.pid.lock
+output.txt
+nexchat-codebase-export.txt
+codebase-export.txt
+codebase-export.json
+
+# ================================================================
+# VERCEL DEPLOYMENT
+# ================================================================
+.vercel/
+.vercel/*
+!.vercel/project.json
+vercel.json
+client/vercel.json
+*.vercel
+
+# ================================================================
+# RENDER DEPLOYMENT
+# ================================================================
+.render/
+.render/*
+*.render
+
+# ================================================================
+# MONGODB
+# ================================================================
+data/
+mongodb-data/
+mongo-data/
+*.mongodb
+*.bson
+*.jsonl
+
+# ================================================================
+# UPLOADS / MEDIA
+# ================================================================
+server/uploads/
+server/media/
+server/public/uploads/
+client/public/uploads/
+client/uploads/
+uploads/
+media/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.svg
+*.mp3
+*.wav
+*.mp4
+*.webm
+*.mov
+*.avi
+
+# ================================================================
+# TEST COVERAGE
+# ================================================================
+coverage/
+.nyc_output/
+*.lcov
+*.coverage
+test-results/
+jest/
+__tests__/
+
+# ================================================================
+# PACKAGE MANAGER LOCK FILES (Optional - uncomment as needed)
+# ================================================================
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+# bun.lockb
+
+# ================================================================
+# MISC
+# ================================================================
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+
+# Dump files
+*.dump
+*.sql
+*.sqlite
+
+# Debug files
+*.log
+*.debug
+*.trace
+
+# Profiling
+*.cpuprofile
+*.heapsnapshot
+*.heapprofile
+
+# ================================================================
+# PROJECT-SPECIFIC
+# ================================================================
+# Admin temp files
+server/src/scripts/*.tmp
+client/src/pages/admin/*.tmp
+
+# Backup of old files
+server/server.js.bak
+server/server.js.backup
+server/server-refactored.js
+server/server-old.js
+client/src/components/Chat.jsx.bak
+client/src/components/Chat.jsx.backup
+client/src/components/Chat-old.jsx
+
+# Export files
+*.export.txt
+*.export.json
+
+# ================================================================
+# SECURITY
+# ================================================================
+# Secrets files
+*.secret
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+
+# Credentials files
+credentials.json
+service-account.json
+*.credentials
+
+# ================================================================
+# CI/CD
+# ================================================================
+.github/
+.gitlab/
+.azure/
+.github/*
+!.github/workflows/
+
+# ================================================================
+# DOCKER
+# ================================================================
+docker-compose.override.yml
+docker-compose.*.yml
+Dockerfile.*
+.dockerignore
+*.docker
+
+# ================================================================
+# DATABASE
+# ================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.mongo
+*.mongodb
+
+# ================================================================
+# DEVELOPMENT CACHE
+# ================================================================
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+.eslintcache
+.prettiercache
+.stylelintcache
+
+# ================================================================
+# TURBO / MONOREPO
+# ================================================================
+.turbo/
+node_modules/.cache/
+**/node_modules/.cache/
+
+# ================================================================
+# WINDOWS / MAC SPECIFIC
+# ================================================================
+# Windows
+*.dll
+*.exe
+*.sys
+
+# Mac
+*.dmg
+*.app
+Icon?

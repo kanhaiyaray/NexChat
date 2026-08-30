@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "nexchat-server",
-  "version": "1.0.0",
-  "description": "NexChat WebSocket server — private invite-only rooms",
+  "version": "2.0.0",
+  "description": "NexChat WebSocket server — private invite-only rooms (Modular)",
   "type": "module",
   "main": "server.js",
   "scripts": {
