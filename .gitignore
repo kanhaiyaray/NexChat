@@ -48,7 +48,6 @@ pnpm-debug.log*
 # UPLOADS (user-generated content)
 # ──────────────────────────────────────────────────────────────────
 uploads/
-media/
 files/
 temp/
 
