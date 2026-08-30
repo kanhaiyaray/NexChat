@@ -2124,7 +2124,6 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [userProfilesCache, setUserProfilesCache] = useState({});
 
   const endRef = useRef(null);
-  const fileRef = useRef(null);
   const inputRef = useRef(null);
   const typingTimer = useRef(null);
   const toastTimer = useRef(null);
@@ -2650,46 +2649,6 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
     setMessage("");
     setShowEmoji(false);
     inputRef.current?.focus();
-  };
-
-  const sendImage = () => {
-    if (!image) return;
-    setImgUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      shouldAutoScrollRef.current = true;
-      socket.emit("send_image", {
-        room: roomId,
-        imageBase64: reader.result,
-        sender: username,
-        clerkId: clerkUser?.id,
-        timestamp: new Date().toISOString(),
-      });
-      setImage(null);
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
-      setImagePreview(null);
-      if (fileRef.current) fileRef.current.value = "";
-    };
-    reader.onerror = () => {
-      setImgUploading(false);
-      showToast("Could not read that image file.", "error");
-    };
-    reader.readAsDataURL(image);
-  };
-
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setImage(file);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview(URL.createObjectURL(file));
-  };
-
-  const clearSelectedImage = () => {
-    setImage(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview(null);
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const handleTyping = () => {
@@ -3341,16 +3300,10 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
             </div>
           ) : null}
 
-          {imagePreview && !imgUploading ? (
-            <div className="image-preview">
-              <img className="preview-thumb" src={imagePreview} alt="preview" />
-              <span className="preview-name">{image?.name}</span>
-              <div className="preview-remove" onClick={clearSelectedImage}>
-                ×
-              </div>
-              <button className="icon-btn accent" onClick={sendImage} type="button" style={{ width: 36, height: 36 }}>
-                ↑
-              </button>
+          {fileUploading ? (
+            <div className="uploading-indicator">
+              <span className="spin-icon">⏳</span>
+              Uploading file...
             </div>
           ) : null}
 
