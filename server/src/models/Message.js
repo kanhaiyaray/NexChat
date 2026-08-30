@@ -19,8 +19,12 @@ const messageSchema = new mongoose.Schema({
   }
 }, { timestamps: false });
 
+// Indexes for performance
 messageSchema.index({ room: 1, timestamp: -1 });
 messageSchema.index({ message: 'text' });
+messageSchema.index({ timestamp: 1 });
+messageSchema.index({ type: 1 });
+messageSchema.index({ room: 1, type: 1, timestamp: -1 });
 
 export const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
 export default Message;

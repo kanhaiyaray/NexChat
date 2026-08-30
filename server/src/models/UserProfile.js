@@ -28,7 +28,11 @@ const userProfileSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'banned'], default: 'active' }
 }, { timestamps: false });
 
+// Indexes for performance
 userProfileSchema.index({ username: 'text' });
+userProfileSchema.index({ createdAt: 1 });
+userProfileSchema.index({ status: 1 });
+userProfileSchema.index({ lastSeen: 1 });
 
 export const UserProfile = mongoose.models.UserProfile || mongoose.model('UserProfile', userProfileSchema);
 export default UserProfile;

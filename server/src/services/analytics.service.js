@@ -1,8 +1,21 @@
 ﻿import { Message, UserProfile, PrivateRoom } from '../models/index.js';
 
+// Caching for analytics queries
+const cache = new Map();
+const CACHE_TTL = 60000; // 1 minute
+
 export const getUserGrowth = async (days = 30) => {
+  const cacheKey = `userGrowth_${days}`;
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
+  const maxDays = Math.min(parseInt(days), 30);
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
+  startDate.setDate(startDate.getDate() - maxDays);
 
   const pipeline = [
     { $match: { createdAt: { $gte: startDate } } },
@@ -12,15 +25,29 @@ export const getUserGrowth = async (days = 30) => {
         count: { $sum: 1 }
       }
     },
-    { $sort: { _id: 1 } }
+    { $sort: { _id: 1 } },
+    { $limit: 31 }
   ];
 
-  return await UserProfile.aggregate(pipeline);
+  const results = await UserProfile.aggregate(pipeline);
+  const data = { data: results };
+  
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
 };
 
 export const getRoomGrowth = async (days = 30) => {
+  const cacheKey = `roomGrowth_${days}`;
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
+  const maxDays = Math.min(parseInt(days), 30);
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
+  startDate.setDate(startDate.getDate() - maxDays);
 
   const pipeline = [
     { $match: { createdAt: { $gte: startDate } } },
@@ -30,15 +57,29 @@ export const getRoomGrowth = async (days = 30) => {
         count: { $sum: 1 }
       }
     },
-    { $sort: { _id: 1 } }
+    { $sort: { _id: 1 } },
+    { $limit: 31 }
   ];
 
-  return await PrivateRoom.aggregate(pipeline);
+  const results = await PrivateRoom.aggregate(pipeline);
+  const data = { data: results };
+  
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
 };
 
 export const getMessageStats = async (days = 7) => {
+  const cacheKey = `msgStats_${days}`;
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
+  const maxDays = Math.min(parseInt(days), 30);
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
+  startDate.setDate(startDate.getDate() - maxDays);
 
   const pipeline = [
     { $match: { timestamp: { $gte: startDate } } },
@@ -48,26 +89,54 @@ export const getMessageStats = async (days = 7) => {
         count: { $sum: 1 }
       }
     },
-    { $sort: { _id: 1 } }
+    { $sort: { _id: 1 } },
+    { $limit: 31 }
   ];
 
-  return await Message.aggregate(pipeline);
+  const results = await Message.aggregate(pipeline);
+  const data = { data: results };
+  
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
 };
 
 export const getMessageTypes = async () => {
-  const types = await Message.aggregate([
-    { $group: { _id: '$type', count: { $sum: 1 } } }
+  const cacheKey = 'msgTypes';
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
+  const [textCount, imageCount, voiceCount] = await Promise.all([
+    Message.countDocuments({ type: 'text' }),
+    Message.countDocuments({ type: 'image' }),
+    Message.countDocuments({ type: 'voice' })
   ]);
 
-  const total = types.reduce((sum, t) => sum + t.count, 0);
-  return types.map(t => ({
-    name: t._id,
-    value: t.count,
-    percentage: total ? ((t.count / total) * 100).toFixed(1) : 0
-  }));
+  const total = textCount + imageCount + voiceCount;
+  const data = {
+    data: [
+      { name: 'text', value: textCount, percentage: total ? ((textCount / total) * 100).toFixed(1) : 0 },
+      { name: 'image', value: imageCount, percentage: total ? ((imageCount / total) * 100).toFixed(1) : 0 },
+      { name: 'voice', value: voiceCount, percentage: total ? ((voiceCount / total) * 100).toFixed(1) : 0 }
+    ]
+  };
+
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
 };
 
 export const getTopUsers = async (limit = 10) => {
+  const cacheKey = `topUsers_${limit}`;
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
   const topUsers = await Message.aggregate([
     { $group: { _id: '$sender', count: { $sum: 1 } } },
     { $sort: { count: -1 } },
@@ -75,7 +144,9 @@ export const getTopUsers = async (limit = 10) => {
   ]);
 
   const enriched = await Promise.all(topUsers.map(async (u) => {
-    const profile = await UserProfile.findOne({ username: u._id }).lean();
+    const profile = await UserProfile.findOne({ username: u._id })
+      .select('username lastSeen status')
+      .lean();
     return {
       username: u._id,
       messageCount: u.count,
@@ -84,12 +155,23 @@ export const getTopUsers = async (limit = 10) => {
     };
   }));
 
-  return enriched;
+  const data = { topUsers: enriched };
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
 };
 
 export const getActivityHeatmap = async (days = 7) => {
+  const cacheKey = `heatmap_${days}`;
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+
+  const maxDays = Math.min(parseInt(days), 14);
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
+  startDate.setDate(startDate.getDate() - maxDays);
 
   const pipeline = [
     { $match: { timestamp: { $gte: startDate } } },
@@ -105,15 +187,24 @@ export const getActivityHeatmap = async (days = 7) => {
         count: { $sum: 1 }
       }
     },
-    { $sort: { '_id.day': 1, '_id.hour': 1 } }
+    { $sort: { '_id.day': 1, '_id.hour': 1 } },
+    { $limit: 336 } // 14 days * 24 hours
   ];
 
   const results = await Message.aggregate(pipeline);
-  return results.map(r => ({
+  const data = { data: results.map(r => ({
     day: r._id.day,
     hour: r._id.hour,
     count: r.count
-  }));
+  })) };
+  
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
+};
+
+export const clearAnalyticsCache = () => {
+  cache.clear();
+  console.log('🧹 Analytics cache cleared');
 };
 
 export default {
@@ -123,4 +214,5 @@ export default {
   getMessageTypes,
   getTopUsers,
   getActivityHeatmap,
+  clearAnalyticsCache,
 };

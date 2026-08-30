@@ -1,10 +1,10 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
-  CartesianGrid, Legend
+  AreaChart, Area, PieChart, Pie, Cell,
+  CartesianGrid
 } from 'recharts';
 import {
   fetchAdminStats,
@@ -20,254 +20,388 @@ import { useAdminSocket } from '../../hooks/useAdminSocket';
 
 const COLORS = ['#00e5ff', '#a78bfa', '#f472b6', '#34d399'];
 
+// Helper Components
+const StatsCard = ({ label, value, color }) => (
+  <div style={{
+    background: 'linear-gradient(145deg, #141b2b, #0f172a)',
+    padding: '16px',
+    borderRadius: '12px',
+    border: '1px solid rgba(0,229,255,0.08)',
+  }}>
+    <div style={{ color: '#94a3b8', fontSize: '12px' }}>{label}</div>
+    <div style={{ 
+      fontSize: '28px', 
+      fontWeight: 700, 
+      fontFamily: 'Syne, sans-serif',
+      color: '#e2e8f0'
+    }}>
+      {typeof value === 'number' ? value.toLocaleString() : value}
+    </div>
+  </div>
+);
+
+const ChartCard = ({ title, loading, empty, children }) => {
+  if (loading) {
+    return (
+      <div style={{
+        background: 'linear-gradient(145deg, #141b2b, #0f172a)',
+        padding: '16px',
+        borderRadius: '12px',
+        border: '1px solid rgba(0,229,255,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '240px',
+        color: '#64748b'
+      }}>
+        <span className="spin-icon">⏳</span> Loading...
+      </div>
+    );
+  }
+
+  if (empty) {
+    return (
+      <div style={{
+        background: 'linear-gradient(145deg, #141b2b, #0f172a)',
+        padding: '16px',
+        borderRadius: '12px',
+        border: '1px solid rgba(0,229,255,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '240px',
+        color: '#64748b'
+      }}>
+        No data available
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: 'linear-gradient(145deg, #141b2b, #0f172a)',
+      padding: '16px',
+      borderRadius: '12px',
+      border: '1px solid rgba(0,229,255,0.08)',
+    }}>
+      <h4 style={{ marginBottom: '8px', color: '#94a3b8', fontSize: '14px' }}>{title}</h4>
+      {children}
+    </div>
+  );
+};
+
 export default function Analytics() {
   const { user } = useUser();
   const clerkId = user?.id;
-  const [days, setDays] = useState(14);
+  const [days, setDays] = useState(7);
+  const [activeTab, setActiveTab] = useState('overview');
   const { stats: liveStats } = useAdminSocket(clerkId);
 
-  // KPI stats
-  const { data: statsData } = useQuery({
+  const queryOptions = {
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
+    enabled: !!clerkId,
+  };
+
+  const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['adminStats', clerkId],
     queryFn: () => fetchAdminStats(clerkId),
-    enabled: !!clerkId
+    ...queryOptions
   });
-  const stats = liveStats || statsData;
 
-  // Message volume (existing)
-  const { data: msgVol } = useQuery({
+  const { data: msgVol, isLoading: msgLoading } = useQuery({
     queryKey: ['adminMsgAnalytics', days, clerkId],
     queryFn: () => fetchMessageAnalytics(days, clerkId),
-    enabled: !!clerkId
+    ...queryOptions,
+    enabled: !!clerkId && (activeTab === 'overview' || activeTab === 'messages'),
   });
 
-  // User growth
-  const { data: userGrowth } = useQuery({
+  const { data: userGrowth, isLoading: userGrowthLoading } = useQuery({
     queryKey: ['userGrowth', days, clerkId],
     queryFn: () => fetchUsersOverTime(days, clerkId),
-    enabled: !!clerkId
+    ...queryOptions,
+    enabled: !!clerkId && activeTab === 'users',
   });
 
-  // Room growth
-  const { data: roomGrowth } = useQuery({
+  const { data: roomGrowth, isLoading: roomGrowthLoading } = useQuery({
     queryKey: ['roomGrowth', days, clerkId],
     queryFn: () => fetchRoomsOverTime(days, clerkId),
-    enabled: !!clerkId
+    ...queryOptions,
+    enabled: !!clerkId && activeTab === 'rooms',
   });
 
-  // Message types
-  const { data: msgTypes } = useQuery({
+  const { data: msgTypes, isLoading: msgTypesLoading } = useQuery({
     queryKey: ['msgTypes', clerkId],
     queryFn: () => fetchMessageTypes(clerkId),
-    enabled: !!clerkId
+    ...queryOptions,
+    enabled: !!clerkId && (activeTab === 'overview' || activeTab === 'messages'),
   });
 
-  // Top users
-  const { data: topUsers } = useQuery({
+  const { data: topUsers, isLoading: topUsersLoading } = useQuery({
     queryKey: ['topUsers', clerkId],
     queryFn: () => fetchTopUsers(10, clerkId),
-    enabled: !!clerkId
+    ...queryOptions,
+    enabled: !!clerkId && activeTab === 'users',
   });
 
-  // Heatmap
-  const { data: heatmap } = useQuery({
-    queryKey: ['heatmap', days, clerkId],
-    queryFn: () => fetchActivityHeatmap(days, clerkId),
-    enabled: !!clerkId
-  });
+  const stats = liveStats || statsData;
 
-  // User analytics (pie)
-  const { data: userAnalytics } = useQuery({
-    queryKey: ['userAnalytics', clerkId],
-    queryFn: () => fetchUserAnalytics(clerkId),
-    enabled: !!clerkId
-  });
+  if (statsLoading) {
+    return (
+      <div style={{ color: '#94a3b8', padding: '40px', textAlign: 'center' }}>
+        <div className="spin-icon" style={{ fontSize: '24px', marginBottom: '12px' }}>⏳</div>
+        Loading analytics...
+      </div>
+    );
+  }
 
-  if (!stats) return <div style={{ color: '#94a3b8' }}>Loading analytics...</div>;
+  if (!stats) return null;
 
-  // Prepare data
+  // Prepare data for charts
   const msgChartData = msgVol?.data?.map(d => ({ date: d._id, messages: d.count })) || [];
   const userGrowthData = userGrowth?.data?.map(d => ({ date: d._id, users: d.count })) || [];
   const roomGrowthData = roomGrowth?.data?.map(d => ({ date: d._id, rooms: d.count })) || [];
-
-  const pieUserData = userAnalytics ? [
-    { name: 'Active', value: userAnalytics.active },
-    { name: 'Banned', value: userAnalytics.banned },
-    { name: 'Offline', value: userAnalytics.total - userAnalytics.online }
-  ] : [];
-
   const pieMsgTypes = msgTypes?.data || [];
-
-  // Heatmap: group by day and hour
-  const heatmapData = heatmap?.data || [];
-  const daysRange = [...new Set(heatmapData.map(d => d.day))].sort();
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const heatmapMatrix = daysRange.map(day => {
-    const row = hours.map(hour => {
-      const found = heatmapData.find(d => d.day === day && d.hour === hour);
-      return found ? found.count : 0;
-    });
-    return { day, ...Object.fromEntries(hours.map(h => [h, row[h]])) };
-  });
 
   return (
     <div style={{ color: '#e2e8f0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ fontFamily: 'Syne', fontWeight: 700 }}>📊 Advanced Analytics</h2>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <label style={{ color: '#94a3b8', fontSize: 13 }}>Days:</label>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '24px',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <h2 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700 }}>📊 Analytics</h2>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <label style={{ color: '#94a3b8', fontSize: '13px' }}>Days:</label>
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(0,229,255,0.2)', background: '#0f172a', color: '#e2e8f0' }}
+            style={{ 
+              padding: '6px 12px', 
+              borderRadius: '8px', 
+              border: '1px solid rgba(0,229,255,0.2)', 
+              background: '#0f172a', 
+              color: '#e2e8f0',
+              fontSize: '13px'
+            }}
           >
             <option value={7}>7</option>
             <option value={14}>14</option>
             <option value={30}>30</option>
-            <option value={60}>60</option>
           </select>
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '4px', 
+        marginBottom: '24px',
+        borderBottom: '1px solid rgba(0,229,255,0.08)',
+        paddingBottom: '12px',
+        flexWrap: 'wrap'
+      }}>
+        {['overview', 'users', 'rooms', 'messages'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              background: activeTab === tab ? 'rgba(0,229,255,0.12)' : 'transparent',
+              color: activeTab === tab ? '#00e5ff' : '#94a3b8',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: activeTab === tab ? 600 : 400,
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </div>
+
       {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))', gap: 16, marginBottom: 24 }}>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <div style={{ color: '#94a3b8', fontSize: 12 }}>Total Users</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne' }}>{stats.totalUsers}</div>
-        </div>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <div style={{ color: '#94a3b8', fontSize: 12 }}>Total Rooms</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne' }}>{stats.totalRooms}</div>
-        </div>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <div style={{ color: '#94a3b8', fontSize: 12 }}>Total Messages</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne' }}>{stats.messagesToday}</div>
-        </div>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <div style={{ color: '#94a3b8', fontSize: 12 }}>Active Users (24h)</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne' }}>{stats.newUsers24h}</div>
-        </div>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <div style={{ color: '#94a3b8', fontSize: 12 }}>Online Now</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne' }}>{stats.onlineUsers}</div>
-        </div>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(170px,1fr))', 
+        gap: '16px', 
+        marginBottom: '24px' 
+      }}>
+        <StatsCard label="Total Users" value={stats.totalUsers} color="#00e5ff" />
+        <StatsCard label="Online Now" value={stats.onlineUsers} color="#34d399" />
+        <StatsCard label="Total Rooms" value={stats.totalRooms} color="#a78bfa" />
+        <StatsCard label="Messages Today" value={stats.messagesToday} color="#fbbf24" />
+        <StatsCard label="New Users (24h)" value={stats.newUsers24h} color="#f472b6" />
       </div>
 
-      {/* Row 1: User & Room Growth */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <h4 style={{ marginBottom: 8, color: '#94a3b8' }}>User Growth</h4>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={userGrowthData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="date" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
-              <Area type="monotone" dataKey="users" stroke="#00e5ff" fill="#00e5ff" fillOpacity={0.2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <h4 style={{ marginBottom: 8, color: '#94a3b8' }}>Room Creation</h4>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={roomGrowthData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="date" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
-              <Area type="monotone" dataKey="rooms" stroke="#a78bfa" fill="#a78bfa" fillOpacity={0.2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <ChartCard 
+            title="Message Volume" 
+            loading={msgLoading}
+            empty={!msgChartData.length}
+          >
+            {msgChartData.length > 0 && (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={msgChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                  <YAxis stroke="#94a3b8" fontSize={10} />
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                  <Bar dataKey="messages" fill="#34d399" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
 
-      {/* Row 2: Message Volume & Type Distribution */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, marginBottom: 24 }}>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <h4 style={{ marginBottom: 8, color: '#94a3b8' }}>Message Volume</h4>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={msgChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="date" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
-              <Bar dataKey="messages" fill="#34d399" />
-            </BarChart>
-          </ResponsiveContainer>
+          <ChartCard 
+            title="Message Types" 
+            loading={msgTypesLoading}
+            empty={!pieMsgTypes.length}
+          >
+            {pieMsgTypes.length > 0 && (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie 
+                    data={pieMsgTypes} 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={40} 
+                    outerRadius={70} 
+                    dataKey="value" 
+                    label={({ name, percentage }) => `${name} ${percentage}%`}
+                  >
+                    {pieMsgTypes.map((entry, idx) => (
+                      <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
         </div>
-        <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-          <h4 style={{ marginBottom: 8, color: '#94a3b8' }}>Message Types</h4>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={pieMsgTypes} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" label>
-                {pieMsgTypes.map((entry, idx) => (
-                  <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+      )}
+
+      {activeTab === 'users' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <ChartCard 
+            title="User Growth" 
+            loading={userGrowthLoading}
+            empty={!userGrowthData.length}
+          >
+            {userGrowthData.length > 0 && (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={userGrowthData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                  <YAxis stroke="#94a3b8" fontSize={10} />
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                  <Area type="monotone" dataKey="users" stroke="#00e5ff" fill="#00e5ff" fillOpacity={0.2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          <ChartCard 
+            title="Top Users" 
+            loading={topUsersLoading}
+            empty={!topUsers?.topUsers?.length}
+          >
+            {topUsers?.topUsers && (
+              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                {topUsers.topUsers.slice(0, 5).map((u, idx) => (
+                  <div key={u.username} style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)'
+                  }}>
+                    <span style={{ color: '#94a3b8' }}>#{idx + 1}</span>
+                    <span>{u.username}</span>
+                    <span style={{ color: '#34d399' }}>{u.messageCount} msgs</span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
-            </PieChart>
-          </ResponsiveContainer>
+              </div>
+            )}
+          </ChartCard>
         </div>
-      </div>
+      )}
 
-      {/* Row 3: Activity Heatmap */}
-      <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)', marginBottom: 24 }}>
-        <h4 style={{ marginBottom: 8, color: '#94a3b8' }}>Activity Heatmap (last {days} days)</h4>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 600 }}>
-            <thead>
-              <tr>
-                <th style={{ padding: 4, color: '#94a3b8' }}>Day</th>
-                {hours.map(h => <th key={h} style={{ padding: 4, color: '#94a3b8', textAlign: 'center' }}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {heatmapMatrix.map(row => (
-                <tr key={row.day}>
-                  <td style={{ padding: 4, color: '#94a3b8', whiteSpace: 'nowrap' }}>{row.day}</td>
-                  {hours.map(h => {
-                    const val = row[h] || 0;
-                    const intensity = Math.min(val / 10, 1);
-                    const bg = `rgba(0, 229, 255, ${intensity * 0.7})`;
-                    return (
-                      <td key={h} style={{ padding: 4, textAlign: 'center', backgroundColor: bg, color: val > 5 ? '#000' : '#e2e8f0' }}>
-                        {val > 0 ? val : ''}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {activeTab === 'rooms' && (
+        <ChartCard 
+          title="Room Growth" 
+          loading={roomGrowthLoading}
+          empty={!roomGrowthData.length}
+        >
+          {roomGrowthData.length > 0 && (
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={roomGrowthData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                <YAxis stroke="#94a3b8" fontSize={10} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                <Area type="monotone" dataKey="rooms" stroke="#a78bfa" fill="#a78bfa" fillOpacity={0.2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      )}
+
+      {activeTab === 'messages' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <ChartCard 
+            title="Message Volume" 
+            loading={msgLoading}
+            empty={!msgChartData.length}
+          >
+            {msgChartData.length > 0 && (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={msgChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                  <YAxis stroke="#94a3b8" fontSize={10} />
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                  <Bar dataKey="messages" fill="#34d399" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          <ChartCard 
+            title="Message Types" 
+            loading={msgTypesLoading}
+            empty={!pieMsgTypes.length}
+          >
+            {pieMsgTypes.length > 0 && (
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie 
+                    data={pieMsgTypes} 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={50} 
+                    outerRadius={80} 
+                    dataKey="value" 
+                    label={({ name, percentage }) => `${name} ${percentage}%`}
+                  >
+                    {pieMsgTypes.map((entry, idx) => (
+                      <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
         </div>
-      </div>
-
-      {/* Row 4: Top Active Users */}
-      <div style={{ background: 'linear-gradient(145deg, #141b2b, #0f172a)', padding: 16, borderRadius: 12, border: '1px solid rgba(0,229,255,0.08)' }}>
-        <h4 style={{ marginBottom: 8, color: '#94a3b8' }}>🏆 Top Active Users</h4>
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Username</th>
-              <th>Messages</th>
-              <th>Last Seen</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {topUsers?.topUsers?.map((u, idx) => (
-              <tr key={u.username}>
-                <td>{idx + 1}</td>
-                <td>{u.username}</td>
-                <td>{u.messageCount}</td>
-                <td>{u.lastSeen ? new Date(u.lastSeen).toLocaleDateString() : 'Never'}</td>
-                <td>{u.status === 'banned' ? <span style={{ color: '#f87171' }}>Banned</span> : <span style={{ color: '#34d399' }}>Active</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }

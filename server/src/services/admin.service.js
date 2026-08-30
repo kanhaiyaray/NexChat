@@ -1,9 +1,13 @@
 ﻿import { AdminAudit, SystemSettings, UserProfile, PrivateRoom } from '../models/index.js';
-import { getCodeRoomMap } from './room.service.js';
 import { getDBStatus } from '../config/database.js';
 import { isCloudinaryConfigured } from '../config/cloudinary.js';
 
+// Import Message model for stats
+import { Message } from '../models/index.js';
+
 let roomState = {};
+const statsCache = new Map();
+const STATS_CACHE_TTL = 30000; // 30 seconds
 
 export const setRoomState = (state) => {
   roomState = state;
@@ -18,28 +22,70 @@ export const logAdminAction = async (adminId, adminName, action, target, targetT
 };
 
 export const fetchStats = async () => {
-  const totalUsers = await UserProfile.countDocuments();
-  const onlineUsers = Object.values(roomState).flat().length;
-  const totalRooms = await PrivateRoom.countDocuments();
-  const activeRooms = Object.keys(roomState).filter(roomId => roomState[roomId]?.length >= 2).length;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const messagesToday = await Message.countDocuments({ timestamp: { $gte: today } });
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const newUsers24h = await UserProfile.countDocuments({ createdAt: { $gte: yesterday } });
+  const cacheKey = 'adminStats';
+  if (statsCache.has(cacheKey)) {
+    const cached = statsCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < STATS_CACHE_TTL) {
+      return cached.data;
+    }
+  }
 
-  return {
-    totalUsers,
-    onlineUsers,
-    totalRooms,
-    activeRooms,
-    messagesToday,
-    newUsers24h,
-    serverUptime: process.uptime(),
-    mongoStatus: getDBStatus(),
-    cloudinaryStatus: isCloudinaryConfigured() ? 'configured' : 'missing',
-  };
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const [
+      totalUsers,
+      totalRooms,
+      messagesToday,
+      newUsers24h
+    ] = await Promise.all([
+      UserProfile.countDocuments(),
+      PrivateRoom.countDocuments(),
+      Message.countDocuments({ timestamp: { $gte: today } }),
+      UserProfile.countDocuments({ createdAt: { $gte: yesterday } })
+    ]);
+
+    const onlineUsers = Object.values(roomState).flat().length;
+    const activeRooms = Object.keys(roomState).filter(roomId => roomState[roomId]?.length >= 2).length;
+
+    const data = {
+      totalUsers,
+      onlineUsers,
+      totalRooms,
+      activeRooms,
+      messagesToday,
+      newUsers24h,
+      serverUptime: process.uptime(),
+      mongoStatus: getDBStatus(),
+      cloudinaryStatus: isCloudinaryConfigured() ? 'configured' : 'missing',
+    };
+
+    statsCache.set(cacheKey, { data, timestamp: Date.now() });
+    return data;
+  } catch (err) {
+    console.error('Error fetching stats:', err.message);
+    // Return fallback data
+    return {
+      totalUsers: 0,
+      onlineUsers: 0,
+      totalRooms: 0,
+      activeRooms: 0,
+      messagesToday: 0,
+      newUsers24h: 0,
+      serverUptime: process.uptime(),
+      mongoStatus: getDBStatus(),
+      cloudinaryStatus: isCloudinaryConfigured() ? 'configured' : 'missing',
+      error: err.message
+    };
+  }
+};
+
+export const clearStatsCache = () => {
+  statsCache.clear();
+  console.log('🧹 Stats cache cleared');
 };
 
 export const getSystemSettings = async () => {
@@ -53,18 +99,25 @@ export const updateSystemSettings = async (updates) => {
     .reduce((obj, k) => { obj[k] = updates[k]; return obj; }, {});
   filtered.updatedAt = new Date();
 
-  return await SystemSettings.findOneAndUpdate(
+  const settings = await SystemSettings.findOneAndUpdate(
     {},
     { $set: filtered },
     { new: true, upsert: true }
   );
+  
+  clearStatsCache();
+  return settings;
 };
 
 export const initializeSystemSettings = async () => {
-  const settings = await SystemSettings.findOne();
-  if (!settings) {
-    await SystemSettings.create({});
-    console.log('✅ Default system settings created');
+  try {
+    const settings = await SystemSettings.findOne();
+    if (!settings) {
+      await SystemSettings.create({});
+      console.log('✅ Default system settings created');
+    }
+  } catch (err) {
+    console.warn('Error initializing settings:', err.message);
   }
 };
 
@@ -103,51 +156,14 @@ export const getSystemHealth = () => {
   };
 };
 
-export const getUserGrowth = async (days = 30) => {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
-
-  const pipeline = [
-    { $match: { createdAt: { $gte: startDate } } },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        count: { $sum: 1 }
-      }
-    },
-    { $sort: { _id: 1 } }
-  ];
-
-  return await UserProfile.aggregate(pipeline);
-};
-
-export const getRoomGrowth = async (days = 30) => {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
-
-  const pipeline = [
-    { $match: { createdAt: { $gte: startDate } } },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        count: { $sum: 1 }
-      }
-    },
-    { $sort: { _id: 1 } }
-  ];
-
-  return await PrivateRoom.aggregate(pipeline);
-};
-
 export default {
   setRoomState,
   logAdminAction,
   fetchStats,
+  clearStatsCache,
   getSystemSettings,
   updateSystemSettings,
   initializeSystemSettings,
   getAuditLogs,
   getSystemHealth,
-  getUserGrowth,
-  getRoomGrowth,
 };

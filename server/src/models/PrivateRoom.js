@@ -9,5 +9,8 @@ const privateRoomSchema = new mongoose.Schema({
   suspended: { type: Boolean, default: false }
 }, { timestamps: false });
 
+// Indexes for performance
+privateRoomSchema.index({ createdAt: 1 });
+
 export const PrivateRoom = mongoose.models.PrivateRoom || mongoose.model('PrivateRoom', privateRoomSchema);
 export default PrivateRoom;
