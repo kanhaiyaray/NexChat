@@ -1,5 +1,6 @@
 ﻿import { useRef, useState } from 'react';
 import VoiceRecorder from '../../media/components/VoiceRecorder.jsx';
+import FileUpload from '../../media/components/FileUpload.jsx';
 
 const EMOJI_PANEL = ['😂', '🔥', '❤️', '👍', '😮', '😢', '🎉', '💀', '🤯', '👀', '✅', '💯'];
 
@@ -14,37 +15,13 @@ const MessageInput = ({
   showEmoji,
   setShowEmoji,
   disabled,
+  room,
+  sender,
+  clerkId,
+  onFileUploadComplete,
+  onFileUploadError,
 }) => {
-  const fileRef = useRef(null);
   const inputRef = useRef(null);
-  const [image, setImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-
-  const handleImageSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImage(file);
-    setImagePreview(URL.createObjectURL(file));
-  };
-
-  const handleSendImage = () => {
-    if (!image) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      onSendImage(reader.result);
-      setImage(null);
-      setImagePreview(null);
-      if (fileRef.current) fileRef.current.value = '';
-    };
-    reader.readAsDataURL(image);
-  };
-
-  const clearImage = () => {
-    setImage(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview(null);
-    if (fileRef.current) fileRef.current.value = '';
-  };
 
   const handleSend = () => {
     if (messageText.trim()) {
@@ -66,70 +43,40 @@ const MessageInput = ({
         </div>
       )}
 
-      {imagePreview && !uploading && (
-        <div className="image-preview">
-          <img className="preview-thumb" src={imagePreview} alt="preview" />
-          <span className="preview-name">{image?.name}</span>
-          <div className="preview-remove" onClick={clearImage}>×</div>
-          <button className="icon-btn accent" onClick={handleSendImage} style={{ width: 36, height: 36 }}>
-            ↑
-          </button>
-        </div>
-      )}
-
       <div className="input-row">
-        <input 
-          ref={fileRef} 
-          type="file" 
-          accept="image/*" 
-          onChange={handleImageSelect} 
-          style={{ display: 'none' }} 
+        {/* 🆕 SINGLE FILE UPLOAD BUTTON - handles both images and documents */}
+        <FileUpload
+          room={roomId}
+          sender={username}
+          clerkId={clerkUser?.id}
+          onUploadComplete={handleFileUploadComplete}
+          onError={handleFileUploadError}
+          disabled={imgUploading || voiceUploading || fileUploading}
         />
-        <button 
-          className="icon-btn" 
-          onClick={() => fileRef.current?.click()} 
-          disabled={uploading}
-          title="Attach image"
-        >
-          📎
-        </button>
 
         <textarea
           ref={inputRef}
           className="msg-input"
           rows={1}
-          value={messageText}
+          value={message}
           placeholder="Message your private group..."
-          onChange={(e) => {
-            setMessageText(e.target.value);
-            onTyping();
+          onChange={(event) => {
+            setMessage(event.target.value);
+            handleTyping();
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              sendMessage();
             }
           }}
-          style={{ height: '42px', lineHeight: '18px', paddingTop: '12px' }}
-          disabled={disabled}
+          style={{ height: "42px", lineHeight: "18px", paddingTop: "12px" }}
         />
-
-        <VoiceRecorder onSend={onSendVoice} disabled={uploading || disabled} />
-
-        <button 
-          className="icon-btn" 
-          onClick={() => setShowEmoji(prev => !prev)}
-          title="Emoji"
-        >
+        <VoiceRecorder onSend={sendVoice} disabled={voiceUploading || fileUploading} />
+        <button className="icon-btn" type="button" onClick={() => setShowEmoji((current) => !current)} title="Emoji">
           😊
         </button>
-
-        <button 
-          className="icon-btn accent" 
-          onClick={handleSend}
-          disabled={!messageText.trim() || disabled}
-          title="Send"
-        >
+        <button className="icon-btn accent" type="button" onClick={sendMessage} title="Send">
           ➤
         </button>
       </div>

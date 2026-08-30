@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react';
 import VoicePlayer from '../../media/components/VoicePlayer.jsx';
+import FilePreview from '../../media/components/FilePreview.jsx';
 
 const REACTIONS = ['❤️', '🔥', '😂', '👍', '😮', '💯'];
 
@@ -27,8 +28,6 @@ const MessageItem = ({
   onVisible = null,
 }) => {
   const [imageLightbox, setImageLightbox] = useState(null);
-  const [showReplies, setShowReplies] = useState(false);
-  const [replyDraft, setReplyDraft] = useState('');
   const msgRef = useRef(null);
 
   const formatTime = (ts) => {
@@ -54,9 +53,7 @@ const MessageItem = ({
   };
 
   const senderDisplayName = message.displayName || message.sender;
-  const hasThread = message.isThreadParent && message.replyCount > 0;
 
-  // Intersection Observer for marking as read
   useEffect(() => {
     if (!isUnread || !onVisible || !msgRef.current) return;
 
@@ -155,6 +152,15 @@ const MessageItem = ({
                   audioUrl={message.voiceUrl}
                   duration={message.voiceDuration}
                 />
+              ) : message.type === 'file' ? (
+                <FilePreview
+                  file={{
+                    fileName: message.fileName,
+                    fileSize: message.fileSize,
+                    fileType: message.fileType,
+                    fileUrl: message.fileUrl
+                  }}
+                />
               ) : (
                 message.message
               )}
@@ -175,16 +181,6 @@ const MessageItem = ({
             </div>
           )}
         </div>
-
-        {/* Thread indicator */}
-        {hasThread && onOpenThread && (
-          <button
-            className="view-thread-btn"
-            onClick={() => onOpenThread(message.id)}
-          >
-            💬 View {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
-          </button>
-        )}
 
         {Object.keys(msgReactions || {}).length > 0 && (
           <div className="msg-reactions">
