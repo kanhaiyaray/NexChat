@@ -18,7 +18,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const [contextMenu, setContextMenu] = useState(null);
   const [showEmoji, setShowEmoji] = useState(false);
 
-  // 🆕 Thread state
+  // Thread state
   const [threadView, setThreadView] = useState(null);
   const [threadParent, setThreadParent] = useState(null);
 
@@ -63,7 +63,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
   const { handleTyping } = useTyping(socket, roomId, username);
   useReadReceipts(messages, roomId, username, socket, readReceipts);
 
-  // 🆕 Open thread view
+  // Open thread view
   const openThread = (messageId) => {
     const parent = messages.find(m => m.id === messageId);
     if (parent) {
@@ -221,6 +221,8 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
             onSaveEdit={editMessage}
             onCancelEdit={() => setEditingMessageId('')}
             editSaving={editSaving}
+            roomId={roomId}
+            clerkId={clerkUser?.id}
           />
           <div ref={endRef} />
         </div>
@@ -255,7 +257,7 @@ const ChatScreen = ({ username, roomId, code, clerkUser, onLeave }) => {
         </div>
       )}
 
-      {/* 🆕 Thread View Modal */}
+      {/* Thread View Modal */}
       {threadView && (
         <ThreadView
           threadId={threadView}

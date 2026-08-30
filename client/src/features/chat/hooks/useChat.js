@@ -117,6 +117,14 @@ export const useChat = (roomId, code, username, clerkId) => {
       },
 
       join_error: ({ message }) => setError(message),
+
+      // 🆕 Unread status updates
+      read_status_updated: ({ userId, unreadCount }) => {
+        // Handle unread count updates
+        if (userId === clerkId) {
+          // Update UI if needed
+        }
+      },
     };
 
     Object.entries(handlers).forEach(([event, handler]) => {
