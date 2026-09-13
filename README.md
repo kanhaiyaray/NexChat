@@ -16,7 +16,7 @@
 **No public rooms. No spam. Every conversation is private by design.**
 *Built for people who value privacy — invite-only access via UUID token links.*
 
-[🌐 **Live Demo**](https://nexchat-red.vercel.app/) &nbsp;·&nbsp; [📁 **GitHub Repository**](https://github.com/kanhaiyaray/NexChat)
+[🌐 **Live Demo**](https://nexchat.vaultfs.in) &nbsp;·&nbsp; [📁 **GitHub Repository**](https://github.com/kanhaiyaray/NexChat)
 
 </div>
 
@@ -52,7 +52,7 @@ The application handles the full complexity of a real-time multi-user system: co
 
 | | |
 |---|---|
-| 🌐 **Live App** | [nexchat-red.vercel.app](https://nexchat-red.vercel.app/) |
+| 🌐 **Live App** | [nexchat-red.vercel.app](https://nexchat.vaultfs.in) |
 | 📁 **Source Code** | [github.com/kanhaiyaray/NexChat](https://github.com/kanhaiyaray/NexChat) |
 | 🖥️ **Frontend Host** | Vercel |
 | ⚙️ **Backend Host** | Render |
@@ -918,7 +918,7 @@ The `client/vercel.json` handles SPA routing:
 { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
 ```
 
-**Live production instance:** [nexchat-red.vercel.app](https://nexchat-red.vercel.app/)
+**Live production instance:** [nexchat-red.vercel.app](https://nexchat.vaultfs.in)
 
 ### Clerk Configuration
 
@@ -1070,7 +1070,7 @@ This project is licensed under the **MIT License** — free for personal and com
 
 **Built with ❤️ by Kanhaiya Kumar**
 
-[GitHub](https://github.com/kanhaiyaray/NexChat) · [Live Demo](https://nexchat-red.vercel.app/) · samkanhaiya@gmail.com
+[GitHub](https://github.com/kanhaiyaray/NexChat) · [Live Demo](https://nexchat.vaultfs.in) · samkanhaiya@gmail.com
 
 *"The edge cases are where the real engineering lives."*
 
